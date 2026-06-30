@@ -1,0 +1,10 @@
+{
+  "daily_date": null,
+  "daily_seconds": 0,
+  "seasonal_seconds": 0,
+  "total_seconds": 0,
+  "starts": 0,
+  "active_start": null,
+  "last_known_active": null,
+  "updated_at": null
+}

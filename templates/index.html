@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Piscina e Luci giardino</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div>
+        <h1>🏊 Piscina e Luci giardino</h1>
+        <p id="appMeta">Caricamento…</p>
+      </div>
+      <div id="globalStatus" class="pill gray">Caricamento…</div>
+    </header>
+
+    <nav class="row gap nav-actions">
+      <a class="button-link" href="/statistics">📊 Statistics</a>
+      <a class="button-link" href="/event-log">📜 Event Log</a>
+    </nav>
+
+    <section class="card pump-card">
+      <div class="row between">
+        <div>
+          <h2>🏊 Pompa piscina</h2>
+          <div id="pumpState" class="state unknown">SINCRONIZZAZIONE</div>
+        </div>
+        <div class="mode" id="pumpMode">AUTO</div>
+      </div>
+
+      <div class="grid two">
+        <label>Partenza automatica
+          <input id="startTime" type="time" value="09:00">
+        </label>
+        <label>Durata ore
+          <input id="duration" type="number" min="0.5" max="24" step="0.5" value="6">
+        </label>
+      </div>
+      <div class="row gap">
+        <button onclick="savePumpConfig()">Salva timer</button>
+        <select id="mode" onchange="savePumpConfig()">
+          <option value="auto">Automatico</option>
+          <option value="manual">Manuale</option>
+          <option value="disabled">Disabilitato stagione</option>
+        </select>
+        <button class="secondary" onclick="resetAuto()">Riattiva automatico oggi</button>
+      </div>
+
+      <div class="timeline">
+        <div id="bar" class="bar"></div>
+      </div>
+      <div id="pumpInfo" class="muted">Spegnimento previsto: --:--</div>
+
+      <div class="row gap buttons">
+        <button class="on" onclick="setRelay('pool','2',true)">Accendi pompa</button>
+        <button class="off" onclick="setRelay('pool','2',false)">Spegni pompa</button>
+      </div>
+    </section>
+
+    <section class="cards" id="relayCards"></section>
+
+    <section class="card small">
+      <h2>Diagnostica</h2>
+      <div id="diag" class="diag">Caricamento…</div>
+    </section>
+    <footer class="footer">Last successful refresh: <span id="lastRefresh">-</span></footer>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
