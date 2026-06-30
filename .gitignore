@@ -1,3 +1,33 @@
+# macOS
 .DS_Store
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# Pytest / Ruff / Mypy
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Flask
+instance/
+.webassets-cache
