@@ -9,6 +9,7 @@ from typing import Dict, Any
 from flask import Flask, jsonify, render_template, request
 
 from relay_client import HHCRelayClient
+from temperature_service import DEFAULT_TEMPERATURE_SENSORS, TemperatureService
 
 BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / "config.json"
@@ -44,6 +45,7 @@ _runtime: Dict[str, Any] = {
 }
 _safe_stop_thread = None
 _safe_stop_reset_thread = None
+temperature_service = None
 SAFE_STOP_COMPLETED_VISIBLE_SECONDS = 3
 MAX_EVENTS = 500
 STATS_DEFAULTS = {
@@ -853,6 +855,26 @@ def record_application_stopped():
 atexit.register(record_application_stopped)
 
 
+def start_temperature_service():
+    global temperature_service
+    if temperature_service is None:
+        temperature_service = TemperatureService(
+            DEFAULT_TEMPERATURE_SENSORS,
+            poll_seconds=30,
+            event_callback=record_event
+        )
+    temperature_service.start()
+    return temperature_service
+
+
+def stop_temperature_service():
+    if temperature_service is not None:
+        temperature_service.stop()
+
+
+atexit.register(stop_temperature_service)
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -878,6 +900,7 @@ def api_status():
             "config": cfg,
             "devices": _runtime["devices"],
             "relays": _runtime["relays"],
+            "temperatures": temperature_service.snapshot() if temperature_service else {},
             "heater_statistics": heater_statistics_snapshot(),
             "statistics": statistics_snapshot(cfg),
             "pump": pump,
@@ -1010,6 +1033,7 @@ def api_reset_auto():
 
 
 if __name__ == "__main__":
+    start_temperature_service()
     threading.Thread(target=background_loop, daemon=True).start()
     cfg = load_config()
     app.run(host=cfg["app"].get("host", "0.0.0.0"), port=int(cfg["app"].get("port", 5000)), debug=False)

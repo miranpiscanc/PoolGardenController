@@ -10,6 +10,15 @@ function fmtDateTime(value){
  if(Number.isNaN(d.getTime())) return value;
  return d.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
+function fmtTime(value){
+ if(!value) return '--:--:--';
+ const d=new Date(value);
+ if(Number.isNaN(d.getTime())){
+   const parts=String(value).split('T');
+   return (parts[1]||value||'--:--:--').slice(0,8);
+ }
+ return d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
 function setLastRefresh(value){
  const el=document.getElementById('lastRefresh');
  if(el) el.textContent=fmtDateTime(value);
@@ -75,9 +84,45 @@ async function refresh(){
       pumpDisplayCache.bar=pumpProgress(pump);
     }
     document.getElementById('bar').style.width=pumpDisplayCache.bar+'%';
+    renderTemperatures(s);
     renderCards(s);
     renderDiag(s);
   }catch(e){ const gs=document.getElementById('globalStatus'); gs.textContent='🔴 Server non raggiungibile'; gs.className='pill bad'; }
+}
+function renderTemperatureValue(id,sensor){
+  const el=document.getElementById(id);
+  if(!el || !sensor) return;
+  if(sensor.online){
+    el.textContent=Number(sensor.value).toFixed(1)+' °C';
+    el.className='temperature-value';
+    return;
+  }
+  el.textContent='OFFLINE';
+  el.className='temperature-value offline';
+}
+function renderTemperatures(s){
+  const t=s.temperatures||{};
+  const sensors=t.sensors||{};
+  renderTemperatureValue('waterTemperature', sensors.water);
+  renderTemperatureValue('outsideTemperature', sensors.outside);
+  const last=document.getElementById('temperatureLastUpdate');
+  if(last) last.textContent=fmtTime(t.last_update);
+  const comm=document.getElementById('temperatureCommunication');
+  if(!comm) return;
+  const status=(t.communication||{}).status;
+  if(status==='online'){
+    comm.textContent='🟢 Both thermometers online';
+    comm.className='pill ok';
+  }else if(status==='partial'){
+    comm.textContent='🟡 One thermometer offline';
+    comm.className='pill warn';
+  }else if(status==='offline'){
+    comm.textContent='🔴 Both thermometers offline';
+    comm.className='pill bad';
+  }else{
+    comm.textContent='Caricamento…';
+    comm.className='pill gray';
+  }
 }
 function renderCards(s){
   const root=document.getElementById('relayCards'); root.innerHTML='';
