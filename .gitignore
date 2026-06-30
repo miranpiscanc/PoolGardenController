@@ -31,3 +31,7 @@ dist/
 # Flask
 instance/
 .webassets-cache
+# Runtime data
+device_statistics.json
+event_log.json
+heater_statistics.json
