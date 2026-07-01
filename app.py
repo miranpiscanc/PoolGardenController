@@ -878,15 +878,58 @@ def solar_heating_snapshot(cfg=None):
     with _lock:
         runtime = dict(_runtime["solar_heating"])
     water_temperature = water_temperature_snapshot()
+    enabled = bool(solar.get("enabled"))
+    status_label = "ACTIVE" if enabled else "DISABLED"
     return {
         **solar,
-        "status": "ON" if solar.get("enabled") else "OFF",
+        "status": status_label,
+        "status_label": status_label,
+        "status_message": solar_heating_status_message(solar, runtime, start, stop),
         "water_temperature": water_temperature,
         "operating_start_time": start.strftime("%H:%M"),
         "operating_stop_time": stop.strftime("%H:%M"),
         "safe_stop_time": (stop - timedelta(minutes=2)).strftime("%H:%M"),
         "runtime": runtime
     }
+
+
+def solar_heating_status_message(solar, runtime, start, stop):
+    if not solar.get("enabled"):
+        return "Automation disabled"
+
+    current = now()
+    today = date.today().isoformat()
+    safe_stop = safe_stop_snapshot()
+
+    if runtime.get("safe_stop_completed_date") == today:
+        return "Automation completed for today"
+    if runtime.get("safe_stop_started_date") == today:
+        if safe_stop.get("running"):
+            return "Safe Stop running..."
+        return "Automation completed for today"
+    if runtime.get("auto_started_date") == today:
+        if current < start + timedelta(minutes=5):
+            return f"Heating started automatically at {start.strftime('%H:%M')}"
+        return "Safe Stop scheduled"
+    if runtime.get("last_start_date") == today:
+        recent_event = latest_solar_heating_event(today)
+        if recent_event and "Water already" in recent_event.get("event", ""):
+            return "Temperature OK\n(Water already above configured threshold)"
+        return "Automation completed for today"
+    if current < start:
+        return f"Waiting for start time ({start.strftime('%H:%M')})"
+    if current >= stop:
+        return "Automation completed for today"
+    return "Checking water temperature..."
+
+
+def latest_solar_heating_event(today):
+    for event in reversed(load_event_log()):
+        if event.get("date") != today:
+            continue
+        if event.get("device") == "Solar Heating" and event.get("relay") == "Automation":
+            return event
+    return None
 
 
 def record_solar_event(event, reason=""):

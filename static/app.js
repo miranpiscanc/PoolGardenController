@@ -130,8 +130,12 @@ function renderSolarHeating(s){
   const enabled=!!solar.enabled;
   const state=document.getElementById('solarHeatingState');
   if(state){
-    state.textContent=enabled?'ON':'OFF';
-    state.className='state '+(enabled?'on':'off');
+    state.textContent=solar.status_label || solar.status || (enabled?'ACTIVE':'DISABLED');
+    state.className='pill solar-status-badge '+(enabled?'ok':'gray');
+  }
+  const message=document.getElementById('solarHeatingMessage');
+  if(message){
+    message.textContent=solar.status_message || (enabled?'Waiting for start time ('+(solar.start_time||'08:00')+')':'Automation disabled');
   }
   const toggle=document.getElementById('solarHeatingToggle');
   if(toggle){

@@ -41,6 +41,8 @@ button.secondary{background:#f6f6f6;color:#333}
 .temperature-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0;padding-top:12px}
 .temperature-status{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0 0;padding-top:12px}
 .solar-card{border:1px solid #ffe9a8}
+.solar-status-badge{display:inline-block;margin-top:2px}
+.solar-status-message{margin-top:8px;white-space:pre-line;font-weight:700}
 .solar-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:16px 0 0}
 .solar-summary div{background:#fffaf0;border-radius:12px;padding:10px}
 .solar-summary span{display:block;color:#5b6870;font-size:13px}
