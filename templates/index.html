@@ -1,24 +1,27 @@
 <!doctype html>
-<html lang="it">
+<html lang="{{ language|default('en') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Piscina e Luci giardino</title>
+  <title data-i18n="app.title"></title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <main class="wrap">
     <header class="hero">
       <div>
-        <h1>🏊 Piscina e Luci giardino</h1>
-        <p id="appMeta">Caricamento…</p>
+        <h1 data-i18n="app.dashboardTitle"></h1>
+        <p id="appMeta" data-i18n="common.loading"></p>
       </div>
-      <div id="globalStatus" class="pill gray">Caricamento…</div>
+      <div class="header-actions">
+        <div id="languageSelector" class="language-selector"></div>
+        <div id="globalStatus" class="pill gray" data-i18n="common.loading"></div>
+      </div>
     </header>
 
     <nav class="row gap nav-actions">
-      <a class="button-link" href="/statistics">📊 Statistics</a>
-      <a class="button-link" href="/event-log">📜 Event Log</a>
+      <a class="button-link" href="/statistics" data-i18n="nav.statistics"></a>
+      <a class="button-link" href="/event-log" data-i18n="nav.eventLog"></a>
     </nav>
 
     <section class="card pump-card">
@@ -26,59 +29,59 @@
         <div class="pump-controls">
           <div class="row between">
             <div>
-              <h2>🏊 Pompa piscina</h2>
-              <div id="pumpState" class="state unknown">SINCRONIZZAZIONE</div>
+              <h2 data-i18n="pump.title"></h2>
+              <div id="pumpState" class="state unknown" data-i18n="status.syncing"></div>
             </div>
-            <div class="mode" id="pumpMode">AUTO</div>
+            <div class="mode" id="pumpMode"></div>
           </div>
 
           <div class="grid two">
-            <label>Partenza automatica
+            <label><span data-i18n="pump.autoStart"></span>
               <input id="startTime" type="time" value="09:00">
             </label>
-            <label>Durata ore
+            <label><span data-i18n="pump.durationHours"></span>
               <input id="duration" type="number" min="0.5" max="24" step="0.5" value="6">
             </label>
           </div>
           <div class="row gap">
-            <button onclick="savePumpConfig()">Salva timer</button>
+            <button onclick="savePumpConfig()" data-i18n="pump.saveTimer"></button>
             <select id="mode" onchange="savePumpConfig()">
-              <option value="auto">Automatico</option>
-              <option value="manual">Manuale</option>
-              <option value="disabled">Disabilitato stagione</option>
+              <option value="auto" data-i18n="pump.mode.auto"></option>
+              <option value="manual" data-i18n="pump.mode.manual"></option>
+              <option value="disabled" data-i18n="pump.mode.disabled"></option>
             </select>
-            <button class="secondary" onclick="resetAuto()">Riattiva automatico oggi</button>
+            <button class="secondary" onclick="resetAuto()" data-i18n="pump.reactivateToday"></button>
           </div>
 
           <div class="timeline">
             <div id="bar" class="bar"></div>
           </div>
-          <div id="pumpInfo" class="muted">Spegnimento previsto: --:--</div>
+          <div id="pumpInfo" class="muted" data-i18n="pump.expectedStopEmpty"></div>
 
           <div class="row gap buttons">
-            <button class="on" onclick="setRelay('pool','2',true)">Accendi pompa</button>
-            <button class="off" onclick="setRelay('pool','2',false)">Spegni pompa</button>
+            <button class="on" onclick="setRelay('pool','2',true)" data-i18n="pump.turnOn"></button>
+            <button class="off" onclick="setRelay('pool','2',false)" data-i18n="pump.turnOff"></button>
           </div>
         </div>
 
         <section class="temperature-card pump-temperature-card">
-          <h2>🌡 TEMPERATURES</h2>
+          <h2 data-i18n="temperature.title"></h2>
           <div class="temperature-grid">
             <div>
-              <div class="muted">💧 Water</div>
+              <div class="muted" data-i18n="temperature.water"></div>
               <div id="waterTemperature" class="temperature-value">--</div>
             </div>
             <div>
-              <div class="muted">🌤 Outside</div>
+              <div class="muted" data-i18n="temperature.outside"></div>
               <div id="outsideTemperature" class="temperature-value">--</div>
             </div>
           </div>
           <div class="temperature-status">
-            <div class="muted">Communication status</div>
-            <div id="temperatureCommunication" class="pill gray">Caricamento…</div>
+            <div class="muted" data-i18n="temperature.communicationStatus"></div>
+            <div id="temperatureCommunication" class="pill gray" data-i18n="common.loading"></div>
           </div>
           <div class="temperature-footer">
-            <div class="muted">Last update</div>
+            <div class="muted" data-i18n="common.lastUpdate"></div>
             <div id="temperatureLastUpdate">--:--:--</div>
           </div>
         </section>
@@ -88,51 +91,51 @@
     <section class="card solar-card">
       <div class="row between">
         <div>
-          <h2>☀ Solar Heating Automation</h2>
-          <div id="solarHeatingState" class="pill gray solar-status-badge">SINCRONIZZAZIONE</div>
-          <div id="solarHeatingMessage" class="solar-status-message muted">Caricamento…</div>
+          <h2 data-i18n="solar.title"></h2>
+          <div id="solarHeatingState" class="pill gray solar-status-badge" data-i18n="status.syncing"></div>
+          <div id="solarHeatingMessage" class="solar-status-message muted" data-i18n="common.loading"></div>
         </div>
-        <button id="solarHeatingToggle" class="secondary" onclick="toggleSolarHeating()">Caricamento…</button>
+        <button id="solarHeatingToggle" class="secondary" onclick="toggleSolarHeating()" data-i18n="common.loading"></button>
       </div>
 
       <div class="solar-summary">
         <div>
-          <span>Current water temperature</span>
+          <span data-i18n="solar.currentWaterTemperature"></span>
           <strong id="solarWaterTemperature">--</strong>
         </div>
         <div>
-          <span>Configured threshold</span>
+          <span data-i18n="solar.configuredThreshold"></span>
           <strong id="solarThresholdDisplay">--</strong>
         </div>
         <div>
-          <span>Operating time</span>
+          <span data-i18n="solar.operatingTime"></span>
           <strong id="solarOperatingTime">08:00 → 17:00</strong>
         </div>
       </div>
 
       <div class="grid three">
-        <label>Water temperature threshold
+        <label><span data-i18n="solar.waterTemperatureThreshold"></span>
           <input id="solarThreshold" type="number" min="0" max="45" step="0.1" value="29.0">
         </label>
-        <label>Start time
+        <label><span data-i18n="solar.startTime"></span>
           <input id="solarStartTime" type="time" value="08:00">
         </label>
-        <label>Forced stop time
+        <label><span data-i18n="solar.forcedStopTime"></span>
           <input id="solarStopTime" type="time" value="17:00">
         </label>
       </div>
       <div class="row gap">
-        <button onclick="saveSolarHeatingConfig()">Salva automazione solare</button>
+        <button onclick="saveSolarHeatingConfig()" data-i18n="solar.saveAutomation"></button>
       </div>
     </section>
 
     <section class="cards" id="relayCards"></section>
 
     <section class="card small">
-      <h2>Diagnostica</h2>
-      <div id="diag" class="diag">Caricamento…</div>
+      <h2 data-i18n="diagnostics.title"></h2>
+      <div id="diag" class="diag" data-i18n="common.loading"></div>
     </section>
-    <footer class="footer">Last successful refresh: <span id="lastRefresh">-</span></footer>
+    <footer class="footer"><span data-i18n="common.lastSuccessfulRefresh"></span> <span id="lastRefresh">-</span></footer>
   </main>
   <script src="/static/app.js"></script>
 </body>

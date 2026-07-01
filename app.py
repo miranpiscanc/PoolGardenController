@@ -17,6 +17,7 @@ DATA_DIR = BASE / "data"
 VERSION_PATH = BASE / "VERSION"
 CONFIG_DEFAULTS_PATH = BASE / "config.defaults.json"
 CONFIG_PATH = DATA_DIR / "config.json"
+LANG_DIR = BASE / "lang"
 STATE_PATH = DATA_DIR / "state.json"
 HEATER_STATS_PATH = DATA_DIR / "heater_statistics.json"
 DEVICE_STATS_PATH = DATA_DIR / "device_statistics.json"
@@ -59,6 +60,7 @@ _solar_safe_stop_monitor_thread = None
 temperature_service = None
 SAFE_STOP_COMPLETED_VISIBLE_SECONDS = 3
 MAX_EVENTS = 500
+DEFAULT_LANGUAGE = "en"
 STATS_DEFAULTS = {
     "daily_date": None,
     "daily_seconds": 0,
@@ -149,6 +151,81 @@ def ensure_config_defaults(cfg):
             solar[key] = value
             changed = True
     return changed
+
+
+def supported_languages():
+    languages = {}
+    if not LANG_DIR.exists():
+        return languages
+    for path in sorted(LANG_DIR.glob("*.json")):
+        code = path.stem
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        meta = data.get("meta", {}) if isinstance(data, dict) else {}
+        languages[code] = {
+            "code": code,
+            "name": meta.get("name", code),
+            "nativeName": meta.get("nativeName", meta.get("name", code)),
+            "flag": meta.get("flag", "")
+        }
+    return languages
+
+
+def normalize_language(code):
+    supported = supported_languages()
+    if not supported:
+        return DEFAULT_LANGUAGE
+    if not code:
+        return DEFAULT_LANGUAGE if DEFAULT_LANGUAGE in supported else next(iter(supported))
+    lang = str(code).lower().split("-")[0]
+    if lang in supported:
+        return lang
+    return DEFAULT_LANGUAGE if DEFAULT_LANGUAGE in supported else next(iter(supported))
+
+
+def browser_language():
+    supported = supported_languages()
+    accepted = request.headers.get("Accept-Language", "")
+    for part in accepted.split(","):
+        code = part.split(";")[0].strip()
+        lang = str(code).lower().split("-")[0]
+        if lang in supported:
+            return lang
+    return normalize_language(DEFAULT_LANGUAGE)
+
+
+def selected_language(cfg=None, persist_browser=False):
+    if cfg is None:
+        cfg = load_config()
+    ui = cfg.get("ui") if isinstance(cfg.get("ui"), dict) else {}
+    lang = ui.get("language")
+    if not lang and persist_browser:
+        lang = browser_language()
+        cfg["ui"] = {**ui, "language": lang}
+        save_config(cfg)
+        return lang
+    return normalize_language(lang)
+
+
+def set_selected_language(language):
+    cfg = load_config()
+    lang = normalize_language(language)
+    ui = cfg.get("ui") if isinstance(cfg.get("ui"), dict) else {}
+    cfg["ui"] = {**ui, "language": lang}
+    save_config(cfg)
+    return lang
+
+
+def load_language_file(language):
+    lang = normalize_language(language)
+    path = LANG_DIR / f"{lang}.json"
+    if not path.exists():
+        path = LANG_DIR / f"{DEFAULT_LANGUAGE}.json"
+        lang = DEFAULT_LANGUAGE
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return lang, data
 
 
 def load_state():
@@ -889,11 +966,14 @@ def solar_heating_snapshot(cfg=None):
     water_temperature = water_temperature_snapshot()
     enabled = bool(solar.get("enabled"))
     status_label = "ACTIVE" if enabled else "DISABLED"
+    status_details = solar_heating_status_details(solar, runtime, start, stop)
     return {
         **solar,
         "status": status_label,
         "status_label": status_label,
-        "status_message": solar_heating_status_message(solar, runtime, start, stop),
+        "status_message": status_details["message"],
+        "status_message_key": status_details["key"],
+        "status_message_vars": status_details["vars"],
         "water_temperature": water_temperature,
         "operating_start_time": start.strftime("%H:%M"),
         "operating_stop_time": stop.strftime("%H:%M"),
@@ -903,33 +983,49 @@ def solar_heating_snapshot(cfg=None):
 
 
 def solar_heating_status_message(solar, runtime, start, stop):
+    return solar_heating_status_details(solar, runtime, start, stop)["message"]
+
+
+def solar_heating_status_details(solar, runtime, start, stop):
     if not solar.get("enabled"):
-        return "Automation disabled"
+        return {"key": "solar.message.disabled", "vars": {}, "message": "Automation disabled"}
 
     current = now()
     today = date.today().isoformat()
     safe_stop = safe_stop_snapshot()
 
     if runtime.get("safe_stop_completed_date") == today:
-        return "Automation completed for today"
+        return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
     if runtime.get("safe_stop_started_date") == today:
         if safe_stop.get("running"):
-            return "Safe Stop running..."
-        return "Automation completed for today"
+            return {"key": "solar.message.safeStopRunning", "vars": {}, "message": "Safe Stop running..."}
+        return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
     if runtime.get("auto_started_date") == today:
         if current < start + timedelta(minutes=5):
-            return f"Heating started automatically at {start.strftime('%H:%M')}"
-        return "Safe Stop scheduled"
+            return {
+                "key": "solar.message.heatingStartedAt",
+                "vars": {"time": start.strftime("%H:%M")},
+                "message": f"Heating started automatically at {start.strftime('%H:%M')}"
+            }
+        return {"key": "solar.message.safeStopScheduled", "vars": {}, "message": "Safe Stop scheduled"}
     if runtime.get("last_start_date") == today:
         recent_event = latest_solar_heating_event(today)
         if recent_event and "Water already" in recent_event.get("event", ""):
-            return "Temperature OK\n(Water already above configured threshold)"
-        return "Automation completed for today"
+            return {
+                "key": "solar.message.temperatureOk",
+                "vars": {},
+                "message": "Temperature OK\n(Water already above configured threshold)"
+            }
+        return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
     if current < start:
-        return f"Waiting for start time ({start.strftime('%H:%M')})"
+        return {
+            "key": "solar.message.waitingForStart",
+            "vars": {"time": start.strftime("%H:%M")},
+            "message": f"Waiting for start time ({start.strftime('%H:%M')})"
+        }
     if current >= stop:
-        return "Automation completed for today"
-    return "Checking water temperature..."
+        return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
+    return {"key": "solar.message.checkingWaterTemperature", "vars": {}, "message": "Checking water temperature..."}
 
 
 def latest_solar_heating_event(today):
@@ -1151,7 +1247,35 @@ atexit.register(stop_temperature_service)
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    cfg = load_config()
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template("index.html", language=lang)
+
+
+@app.route("/api/i18n")
+def api_i18n():
+    cfg = load_config()
+    lang = selected_language(cfg, persist_browser=True)
+    loaded_lang, translations = load_language_file(lang)
+    return jsonify({
+        "ok": True,
+        "language": loaded_lang,
+        "languages": supported_languages(),
+        "translations": translations
+    })
+
+
+@app.route("/api/language", methods=["POST"])
+def api_language():
+    data = request.get_json(force=True)
+    lang = set_selected_language(data.get("language"))
+    loaded_lang, translations = load_language_file(lang)
+    return jsonify({
+        "ok": True,
+        "language": loaded_lang,
+        "languages": supported_languages(),
+        "translations": translations
+    })
 
 
 @app.route("/api/status")
@@ -1170,6 +1294,8 @@ def api_status():
             "version": version,
             "port": port,
             "app": {"version": version, "port": port},
+            "language": selected_language(cfg),
+            "languages": supported_languages(),
             "app_meta": f"{version} · server su porta {port}",
             "config": cfg,
             "devices": _runtime["devices"],
@@ -1270,12 +1396,16 @@ def api_events():
 
 @app.route("/statistics")
 def statistics_page():
-    return render_template("statistics.html")
+    cfg = load_config()
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template("statistics.html", language=lang)
 
 
 @app.route("/event-log")
 def event_log_page():
-    return render_template("event_log.html")
+    cfg = load_config()
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template("event_log.html", language=lang)
 
 
 @app.route("/api/solar_heating/config", methods=["POST"])

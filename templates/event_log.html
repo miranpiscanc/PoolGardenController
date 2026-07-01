@@ -1,25 +1,28 @@
 <!doctype html>
-<html lang="it">
+<html lang="{{ language|default('en') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Event Log</title>
+  <title data-i18n="events.pageTitle"></title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <main class="wrap">
     <header class="hero">
       <div>
-        <h1>📜 Event Log</h1>
-        <p id="appMeta">Caricamento…</p>
+        <h1 data-i18n="events.title"></h1>
+        <p id="appMeta" data-i18n="common.loading"></p>
       </div>
-      <a class="button-link" href="/">← Dashboard</a>
+      <div class="header-actions">
+        <div id="languageSelector" class="language-selector"></div>
+        <a class="button-link" href="/" data-i18n="nav.dashboard"></a>
+      </div>
     </header>
 
     <section class="card">
-      <div id="eventLog" class="event-log">Caricamento…</div>
+      <div id="eventLog" class="event-log" data-i18n="common.loading"></div>
     </section>
-    <footer class="footer">Last successful refresh: <span id="lastRefresh">-</span></footer>
+    <footer class="footer"><span data-i18n="common.lastSuccessfulRefresh"></span> <span id="lastRefresh">-</span></footer>
   </main>
   <script src="/static/app.js"></script>
 </body>

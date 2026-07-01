@@ -1,0 +1,226 @@
+{
+  "meta": {
+    "name": "Italian",
+    "nativeName": "Italiano",
+    "flag": "🇮🇹",
+    "locale": "it-IT"
+  },
+  "app": {
+    "title": "Piscina e luci giardino",
+    "dashboardTitle": "🏊 Piscina e luci giardino",
+    "meta": "{version} · server su porta {port}"
+  },
+  "common": {
+    "loading": "Caricamento...",
+    "lastUpdate": "Ultimo aggiornamento",
+    "lastSuccessfulRefresh": "Ultimo aggiornamento riuscito:"
+  },
+  "nav": {
+    "dashboard": "← Dashboard",
+    "statistics": "📊 Statistiche",
+    "eventLog": "📜 Registro eventi"
+  },
+  "status": {
+    "on": "ACCESO",
+    "off": "SPENTO",
+    "online": "🟢 Online",
+    "offline": "OFFLINE",
+    "syncing": "SINCRONIZZAZIONE",
+    "checkNetwork": "🔴 Verifica rete",
+    "serverUnreachable": "🔴 Server non raggiungibile"
+  },
+  "time": {
+    "hoursMinutes": "{hours}h {minutes}m"
+  },
+  "pump": {
+    "title": "🏊 Pompa piscina",
+    "autoStart": "Partenza automatica",
+    "durationHours": "Durata ore",
+    "saveTimer": "Salva timer",
+    "reactivateToday": "Riattiva automatico oggi",
+    "expectedStopEmpty": "Spegnimento previsto: --:--",
+    "turnOn": "Accendi pompa",
+    "turnOff": "Spegni pompa",
+    "info": "Spegnimento previsto: {stopTime} · rimanenti {remaining}",
+    "manualTimerActive": "timer manuale attivo",
+    "autoSuspendedToday": "automatico sospeso oggi",
+    "mode": {
+      "auto": "Automatico",
+      "manual": "Manuale",
+      "disabled": "Disabilitato stagione"
+    },
+    "modeBadge": {
+      "auto": "AUTO",
+      "manual": "MANUALE",
+      "disabled": "DISABILITATO"
+    }
+  },
+  "temperature": {
+    "title": "🌡 Temperature",
+    "water": "💧 Acqua",
+    "outside": "🌤 Esterna",
+    "communicationStatus": "Stato comunicazione",
+    "status": {
+      "online": "🟢 Entrambi i termometri online",
+      "partial": "🟡 Un termometro offline",
+      "offline": "🔴 Entrambi i termometri offline"
+    }
+  },
+  "solar": {
+    "title": "☀ Automazione riscaldamento solare",
+    "currentWaterTemperature": "Temperatura acqua attuale",
+    "configuredThreshold": "Soglia configurata",
+    "operatingTime": "Orario operativo",
+    "waterTemperatureThreshold": "Soglia temperatura acqua",
+    "startTime": "Ora di avvio",
+    "forcedStopTime": "Ora arresto forzato",
+    "saveAutomation": "Salva automazione solare",
+    "enable": "Attiva",
+    "disable": "Disattiva",
+    "status": {
+      "active": "ATTIVA",
+      "disabled": "DISABILITATA"
+    },
+    "message": {
+      "disabled": "Automazione disabilitata",
+      "waitingForStart": "In attesa dell'ora di avvio ({time})",
+      "heatingStartedAt": "Riscaldamento avviato automaticamente alle {time}",
+      "completedToday": "Automazione completata per oggi",
+      "safeStopRunning": "Arresto sicuro in corso...",
+      "safeStopScheduled": "Arresto sicuro programmato",
+      "temperatureOk": "Temperatura OK\n(acqua già sopra la soglia configurata)",
+      "checkingWaterTemperature": "Controllo temperatura acqua..."
+    },
+    "messageMap": {
+      "Automation disabled": "Automazione disabilitata",
+      "Automation completed for today": "Automazione completata per oggi",
+      "Safe Stop running...": "Arresto sicuro in corso...",
+      "Safe Stop scheduled": "Arresto sicuro programmato",
+      "Temperature OK\n(Water already above configured threshold)": "Temperatura OK\n(acqua già sopra la soglia configurata)",
+      "Checking water temperature...": "Controllo temperatura acqua..."
+    }
+  },
+  "relay": {
+    "number": "relè {number}",
+    "response": "Risposta: {response} · {ms} ms",
+    "turnOn": "Accendi",
+    "turnOff": "Spegni"
+  },
+  "safeStop": {
+    "button": "🔥 Arresto sicuro",
+    "inProgress": "Arresto sicuro in corso",
+    "running": "⚙ Arresto sicuro in corso...",
+    "cooldownDetail": "Spegnimento riscaldatore ✓<br>Raffreddamento in corso ({seconds} s)",
+    "stopPumpDetail": "Spegnimento riscaldatore ✓<br>Raffreddamento completato ✓<br>Arresto pompa...",
+    "error": "Errore arresto sicuro: {error}",
+    "unknownError": "errore sconosciuto",
+    "completed": "✓ Arresto sicuro completato",
+    "phaseMap": {
+      "Inattivo": "Inattivo",
+      "Avvio arresto sicuro": "Avvio arresto sicuro",
+      "Verifica stato riscaldatore": "Verifica stato riscaldatore",
+      "Verifica stato pompa": "Verifica stato pompa",
+      "Spegnimento riscaldatore": "Spegnimento riscaldatore",
+      "Raffreddamento in corso": "Raffreddamento in corso",
+      "Arresto pompa": "Arresto pompa",
+      "Arresto sicuro completato": "Arresto sicuro completato",
+      "Errore arresto sicuro": "Errore arresto sicuro",
+      "Riscaldatore già spento": "Riscaldatore già spento",
+      "Riscaldatore spento, pompa già ferma": "Riscaldatore spento, pompa già ferma"
+    }
+  },
+  "devices": {
+    "pool": {
+      "name": "Piscina",
+      "relays": {
+        "1": "Riscaldatore",
+        "2": "Pompa piscina"
+      }
+    },
+    "garden": {
+      "name": "Giardino",
+      "relays": {
+        "1": "Luci giardino"
+      }
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnostica",
+    "serverTime": "Ora server: {time}",
+    "lastPolling": "Ultimo polling: {time}",
+    "lastCommand": "Ultimo comando: {command}",
+    "elapsedMs": "{ms} ms",
+    "ok": "OK",
+    "ko": "KO"
+  },
+  "statistics": {
+    "pageTitle": "Statistiche dispositivi",
+    "title": "📊 Statistiche",
+    "today": "Oggi",
+    "season": "Stagione",
+    "total": "Totale",
+    "starts": "Avvii"
+  },
+  "events": {
+    "pageTitle": "Registro eventi",
+    "title": "📜 Registro eventi",
+    "empty": "Nessun evento registrato.",
+    "deviceMap": {
+      "Application": "Applicazione",
+      "Configuration": "Configurazione",
+      "Heater": "Riscaldatore",
+      "Scheduler": "Scheduler",
+      "Solar Heating": "Riscaldamento solare"
+    },
+    "relayMap": {
+      "Relay 1": "Relè 1",
+      "Relay 2": "Relè 2",
+      "Pump": "Pompa",
+      "Automation": "Automazione",
+      "Solar Heating": "Riscaldamento solare"
+    },
+    "sourceMap": {
+      "API": "API",
+      "Manual": "Manuale",
+      "Polling": "Polling",
+      "Safe Stop": "Arresto sicuro",
+      "Scheduler": "Scheduler",
+      "Solar Heating": "Riscaldamento solare",
+      "System": "Sistema"
+    },
+    "eventMap": {
+      "Application started": "Applicazione avviata",
+      "Application stopped": "Applicazione arrestata",
+      "Automatic Safe Stop completed": "Arresto sicuro automatico completato",
+      "Automatic Safe Stop started": "Arresto sicuro automatico avviato",
+      "Automatic heating skipped": "Riscaldamento automatico saltato",
+      "Communication error": "Errore di comunicazione",
+      "Configuration changed": "Configurazione modificata",
+      "Manual command": "Comando manuale",
+      "Safe Stop Completed": "Arresto sicuro completato",
+      "Safe Stop Error": "Errore arresto sicuro",
+      "Safe Stop Started": "Arresto sicuro avviato",
+      "Scheduler start": "Avvio scheduler",
+      "Scheduler stop": "Arresto scheduler",
+      "Seasonal statistics reset": "Statistiche stagionali azzerate",
+      "Solar Heating disabled": "Riscaldamento solare disabilitato",
+      "Solar Heating enabled": "Riscaldamento solare abilitato"
+    },
+    "reasonMap": {
+      "Automatic schedule": "Programmazione automatica",
+      "Automatic pump schedule reactivated for today": "Programmazione automatica pompa riattivata per oggi",
+      "Backend polling": "Polling backend",
+      "Manual command": "Comando manuale",
+      "Manual OFF command": "Comando manuale OFF",
+      "Manual ON command": "Comando manuale ON",
+      "Manual pump timer expired": "Timer manuale pompa scaduto",
+      "Process exiting": "Processo in chiusura",
+      "Protection sequence": "Sequenza di protezione",
+      "Pump start was not confirmed": "Avvio pompa non confermato",
+      "Relay read failed": "Lettura relè non riuscita",
+      "Relay read failed after command": "Lettura relè non riuscita dopo il comando",
+      "Seasonal runtime reset for all relays": "Tempo stagionale azzerato per tutti i relè",
+      "Water temperature unavailable": "Temperatura acqua non disponibile"
+    }
+  }
+}

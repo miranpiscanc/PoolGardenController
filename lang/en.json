@@ -1,0 +1,226 @@
+{
+  "meta": {
+    "name": "English",
+    "nativeName": "English",
+    "flag": "🇬🇧",
+    "locale": "en-GB"
+  },
+  "app": {
+    "title": "Pool and Garden Lights",
+    "dashboardTitle": "🏊 Pool and Garden Lights",
+    "meta": "{version} · server on port {port}"
+  },
+  "common": {
+    "loading": "Loading...",
+    "lastUpdate": "Last update",
+    "lastSuccessfulRefresh": "Last successful refresh:"
+  },
+  "nav": {
+    "dashboard": "← Dashboard",
+    "statistics": "📊 Statistics",
+    "eventLog": "📜 Event Log"
+  },
+  "status": {
+    "on": "ON",
+    "off": "OFF",
+    "online": "🟢 Online",
+    "offline": "OFFLINE",
+    "syncing": "SYNCING",
+    "checkNetwork": "🔴 Check network",
+    "serverUnreachable": "🔴 Server unreachable"
+  },
+  "time": {
+    "hoursMinutes": "{hours}h {minutes}m"
+  },
+  "pump": {
+    "title": "🏊 Pool pump",
+    "autoStart": "Automatic start",
+    "durationHours": "Duration hours",
+    "saveTimer": "Save timer",
+    "reactivateToday": "Reactivate automatic today",
+    "expectedStopEmpty": "Expected stop: --:--",
+    "turnOn": "Turn pump on",
+    "turnOff": "Turn pump off",
+    "info": "Expected stop: {stopTime} · remaining {remaining}",
+    "manualTimerActive": "manual timer active",
+    "autoSuspendedToday": "automatic suspended today",
+    "mode": {
+      "auto": "Automatic",
+      "manual": "Manual",
+      "disabled": "Season disabled"
+    },
+    "modeBadge": {
+      "auto": "AUTO",
+      "manual": "MANUAL",
+      "disabled": "DISABLED"
+    }
+  },
+  "temperature": {
+    "title": "🌡 Temperatures",
+    "water": "💧 Water",
+    "outside": "🌤 Outside",
+    "communicationStatus": "Communication status",
+    "status": {
+      "online": "🟢 Both thermometers online",
+      "partial": "🟡 One thermometer offline",
+      "offline": "🔴 Both thermometers offline"
+    }
+  },
+  "solar": {
+    "title": "☀ Solar Heating Automation",
+    "currentWaterTemperature": "Current water temperature",
+    "configuredThreshold": "Configured threshold",
+    "operatingTime": "Operating time",
+    "waterTemperatureThreshold": "Water temperature threshold",
+    "startTime": "Start time",
+    "forcedStopTime": "Forced stop time",
+    "saveAutomation": "Save solar automation",
+    "enable": "Enable",
+    "disable": "Disable",
+    "status": {
+      "active": "ACTIVE",
+      "disabled": "DISABLED"
+    },
+    "message": {
+      "disabled": "Automation disabled",
+      "waitingForStart": "Waiting for start time ({time})",
+      "heatingStartedAt": "Heating started automatically at {time}",
+      "completedToday": "Automation completed for today",
+      "safeStopRunning": "Safe Stop running...",
+      "safeStopScheduled": "Safe Stop scheduled",
+      "temperatureOk": "Temperature OK\n(Water already above configured threshold)",
+      "checkingWaterTemperature": "Checking water temperature..."
+    },
+    "messageMap": {
+      "Automation disabled": "Automation disabled",
+      "Automation completed for today": "Automation completed for today",
+      "Safe Stop running...": "Safe Stop running...",
+      "Safe Stop scheduled": "Safe Stop scheduled",
+      "Temperature OK\n(Water already above configured threshold)": "Temperature OK\n(Water already above configured threshold)",
+      "Checking water temperature...": "Checking water temperature..."
+    }
+  },
+  "relay": {
+    "number": "relay {number}",
+    "response": "Response: {response} · {ms} ms",
+    "turnOn": "Turn on",
+    "turnOff": "Turn off"
+  },
+  "safeStop": {
+    "button": "🔥 Safe Stop",
+    "inProgress": "Safe Stop in progress",
+    "running": "⚙ Safe Stop in progress...",
+    "cooldownDetail": "Heater off ✓<br>Cooldown in progress ({seconds} s)",
+    "stopPumpDetail": "Heater off ✓<br>Cooldown completed ✓<br>Stopping pump...",
+    "error": "Safe Stop error: {error}",
+    "unknownError": "unknown error",
+    "completed": "✓ Safe Stop completed",
+    "phaseMap": {
+      "Inattivo": "Idle",
+      "Avvio arresto sicuro": "Starting Safe Stop",
+      "Verifica stato riscaldatore": "Checking heater status",
+      "Verifica stato pompa": "Checking pump status",
+      "Spegnimento riscaldatore": "Turning heater off",
+      "Raffreddamento in corso": "Cooldown in progress",
+      "Arresto pompa": "Stopping pump",
+      "Arresto sicuro completato": "Safe Stop completed",
+      "Errore arresto sicuro": "Safe Stop error",
+      "Riscaldatore già spento": "Heater already off",
+      "Riscaldatore spento, pompa già ferma": "Heater off, pump already stopped"
+    }
+  },
+  "devices": {
+    "pool": {
+      "name": "Pool",
+      "relays": {
+        "1": "Heater",
+        "2": "Pool pump"
+      }
+    },
+    "garden": {
+      "name": "Garden",
+      "relays": {
+        "1": "Garden lights"
+      }
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "serverTime": "Server time: {time}",
+    "lastPolling": "Last polling: {time}",
+    "lastCommand": "Last command: {command}",
+    "elapsedMs": "{ms} ms",
+    "ok": "OK",
+    "ko": "KO"
+  },
+  "statistics": {
+    "pageTitle": "Device statistics",
+    "title": "📊 Statistics",
+    "today": "Today",
+    "season": "Season",
+    "total": "Total",
+    "starts": "Starts"
+  },
+  "events": {
+    "pageTitle": "Event Log",
+    "title": "📜 Event Log",
+    "empty": "No events recorded.",
+    "deviceMap": {
+      "Application": "Application",
+      "Configuration": "Configuration",
+      "Heater": "Heater",
+      "Scheduler": "Scheduler",
+      "Solar Heating": "Solar Heating"
+    },
+    "relayMap": {
+      "Relay 1": "Relay 1",
+      "Relay 2": "Relay 2",
+      "Pump": "Pump",
+      "Automation": "Automation",
+      "Solar Heating": "Solar Heating"
+    },
+    "sourceMap": {
+      "API": "API",
+      "Manual": "Manual",
+      "Polling": "Polling",
+      "Safe Stop": "Safe Stop",
+      "Scheduler": "Scheduler",
+      "Solar Heating": "Solar Heating",
+      "System": "System"
+    },
+    "eventMap": {
+      "Application started": "Application started",
+      "Application stopped": "Application stopped",
+      "Automatic Safe Stop completed": "Automatic Safe Stop completed",
+      "Automatic Safe Stop started": "Automatic Safe Stop started",
+      "Automatic heating skipped": "Automatic heating skipped",
+      "Communication error": "Communication error",
+      "Configuration changed": "Configuration changed",
+      "Manual command": "Manual command",
+      "Safe Stop Completed": "Safe Stop Completed",
+      "Safe Stop Error": "Safe Stop Error",
+      "Safe Stop Started": "Safe Stop Started",
+      "Scheduler start": "Scheduler start",
+      "Scheduler stop": "Scheduler stop",
+      "Seasonal statistics reset": "Seasonal statistics reset",
+      "Solar Heating disabled": "Solar Heating disabled",
+      "Solar Heating enabled": "Solar Heating enabled"
+    },
+    "reasonMap": {
+      "Automatic schedule": "Automatic schedule",
+      "Automatic pump schedule reactivated for today": "Automatic pump schedule reactivated for today",
+      "Backend polling": "Backend polling",
+      "Manual command": "Manual command",
+      "Manual OFF command": "Manual OFF command",
+      "Manual ON command": "Manual ON command",
+      "Manual pump timer expired": "Manual pump timer expired",
+      "Process exiting": "Process exiting",
+      "Protection sequence": "Protection sequence",
+      "Pump start was not confirmed": "Pump start was not confirmed",
+      "Relay read failed": "Relay read failed",
+      "Relay read failed after command": "Relay read failed after command",
+      "Seasonal runtime reset for all relays": "Seasonal runtime reset for all relays",
+      "Water temperature unavailable": "Water temperature unavailable"
+    }
+  }
+}
