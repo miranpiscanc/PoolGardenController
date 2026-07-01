@@ -22,60 +22,67 @@
     </nav>
 
     <section class="card pump-card">
-      <div class="row between">
-        <div>
-          <h2>🏊 Pompa piscina</h2>
-          <div id="pumpState" class="state unknown">SINCRONIZZAZIONE</div>
+      <div class="pump-layout">
+        <div class="pump-controls">
+          <div class="row between">
+            <div>
+              <h2>🏊 Pompa piscina</h2>
+              <div id="pumpState" class="state unknown">SINCRONIZZAZIONE</div>
+            </div>
+            <div class="mode" id="pumpMode">AUTO</div>
+          </div>
+
+          <div class="grid two">
+            <label>Partenza automatica
+              <input id="startTime" type="time" value="09:00">
+            </label>
+            <label>Durata ore
+              <input id="duration" type="number" min="0.5" max="24" step="0.5" value="6">
+            </label>
+          </div>
+          <div class="row gap">
+            <button onclick="savePumpConfig()">Salva timer</button>
+            <select id="mode" onchange="savePumpConfig()">
+              <option value="auto">Automatico</option>
+              <option value="manual">Manuale</option>
+              <option value="disabled">Disabilitato stagione</option>
+            </select>
+            <button class="secondary" onclick="resetAuto()">Riattiva automatico oggi</button>
+          </div>
+
+          <div class="timeline">
+            <div id="bar" class="bar"></div>
+          </div>
+          <div id="pumpInfo" class="muted">Spegnimento previsto: --:--</div>
+
+          <div class="row gap buttons">
+            <button class="on" onclick="setRelay('pool','2',true)">Accendi pompa</button>
+            <button class="off" onclick="setRelay('pool','2',false)">Spegni pompa</button>
+          </div>
         </div>
-        <div class="mode" id="pumpMode">AUTO</div>
-      </div>
 
-      <div class="grid two">
-        <label>Partenza automatica
-          <input id="startTime" type="time" value="09:00">
-        </label>
-        <label>Durata ore
-          <input id="duration" type="number" min="0.5" max="24" step="0.5" value="6">
-        </label>
+        <section class="temperature-card pump-temperature-card">
+          <h2>🌡 TEMPERATURES</h2>
+          <div class="temperature-grid">
+            <div>
+              <div class="muted">💧 Water</div>
+              <div id="waterTemperature" class="temperature-value">--</div>
+            </div>
+            <div>
+              <div class="muted">🌤 Outside</div>
+              <div id="outsideTemperature" class="temperature-value">--</div>
+            </div>
+          </div>
+          <div class="temperature-status">
+            <div class="muted">Communication status</div>
+            <div id="temperatureCommunication" class="pill gray">Caricamento…</div>
+          </div>
+          <div class="temperature-footer">
+            <div class="muted">Last update</div>
+            <div id="temperatureLastUpdate">--:--:--</div>
+          </div>
+        </section>
       </div>
-      <div class="row gap">
-        <button onclick="savePumpConfig()">Salva timer</button>
-        <select id="mode" onchange="savePumpConfig()">
-          <option value="auto">Automatico</option>
-          <option value="manual">Manuale</option>
-          <option value="disabled">Disabilitato stagione</option>
-        </select>
-        <button class="secondary" onclick="resetAuto()">Riattiva automatico oggi</button>
-      </div>
-
-      <div class="timeline">
-        <div id="bar" class="bar"></div>
-      </div>
-      <div id="pumpInfo" class="muted">Spegnimento previsto: --:--</div>
-
-      <div class="row gap buttons">
-        <button class="on" onclick="setRelay('pool','2',true)">Accendi pompa</button>
-        <button class="off" onclick="setRelay('pool','2',false)">Spegni pompa</button>
-      </div>
-    </section>
-
-    <section class="card temperature-card">
-      <h2>🌡 TEMPERATURES</h2>
-      <div class="temperature-grid">
-        <div>
-          <div class="muted">💧 Water</div>
-          <div id="waterTemperature" class="temperature-value">--</div>
-        </div>
-        <div>
-          <div class="muted">🌤 Outside</div>
-          <div id="outsideTemperature" class="temperature-value">--</div>
-        </div>
-      </div>
-      <div class="temperature-footer">
-        <div class="muted">Last update</div>
-        <div id="temperatureLastUpdate">--:--:--</div>
-      </div>
-      <div id="temperatureCommunication" class="pill gray">Caricamento…</div>
     </section>
 
     <section class="cards" id="relayCards"></section>

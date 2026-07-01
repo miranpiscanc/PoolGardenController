@@ -10,6 +10,9 @@ body{margin:0}
 .between{justify-content:space-between}
 .gap{gap:10px}
 .grid.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 12px}
+.pump-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.85fr);gap:18px;align-items:start}
+.pump-temperature-card{background:#f6f9fb;border:1px solid #edf1f4;border-radius:18px;padding:16px}
+.pump-temperature-card .temperature-grid{grid-template-columns:1fr}
 h2{margin:0 0 10px}
 .state{font-size:24px;font-weight:800}
 .state.on{color:#16803c}
@@ -35,6 +38,7 @@ button.secondary{background:#f6f6f6;color:#333}
 .temperature-value{font-size:32px;font-weight:800;margin-top:4px;min-height:40px}
 .temperature-value.offline{color:#a0192a;font-size:24px}
 .temperature-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0;padding-top:12px}
+.temperature-status{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0 0;padding-top:12px}
 .diag{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;font-size:14px}
 .relay-title{display:flex;gap:10px;align-items:center}
 .relay-title .icon{font-size:26px}
@@ -52,6 +56,7 @@ button.secondary{background:#f6f6f6;color:#333}
   .hero{display:block}
   .state{font-size:22px}
   .card{border-radius:18px}
+  .pump-layout{grid-template-columns:1fr}
   .temperature-grid{grid-template-columns:1fr}
   .event-row{grid-template-columns:1fr}
 }
