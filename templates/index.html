@@ -85,6 +85,46 @@
       </div>
     </section>
 
+    <section class="card solar-card">
+      <div class="row between">
+        <div>
+          <h2>☀ Solar Heating Automation</h2>
+          <div id="solarHeatingState" class="state unknown">SINCRONIZZAZIONE</div>
+        </div>
+        <button id="solarHeatingToggle" class="secondary" onclick="toggleSolarHeating()">Caricamento…</button>
+      </div>
+
+      <div class="solar-summary">
+        <div>
+          <span>Current water temperature</span>
+          <strong id="solarWaterTemperature">--</strong>
+        </div>
+        <div>
+          <span>Configured threshold</span>
+          <strong id="solarThresholdDisplay">--</strong>
+        </div>
+        <div>
+          <span>Operating time</span>
+          <strong id="solarOperatingTime">08:00 → 17:00</strong>
+        </div>
+      </div>
+
+      <div class="grid three">
+        <label>Water temperature threshold
+          <input id="solarThreshold" type="number" min="0" max="45" step="0.1" value="29.0">
+        </label>
+        <label>Start time
+          <input id="solarStartTime" type="time" value="08:00">
+        </label>
+        <label>Forced stop time
+          <input id="solarStopTime" type="time" value="17:00">
+        </label>
+      </div>
+      <div class="row gap">
+        <button onclick="saveSolarHeatingConfig()">Salva automazione solare</button>
+      </div>
+    </section>
+
     <section class="cards" id="relayCards"></section>
 
     <section class="card small">

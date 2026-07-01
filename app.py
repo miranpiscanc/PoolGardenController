@@ -1,5 +1,6 @@
 import json
 import atexit
+import shutil
 import threading
 import time
 from datetime import datetime, date, timedelta
@@ -12,14 +13,16 @@ from relay_client import HHCRelayClient
 from temperature_service import DEFAULT_TEMPERATURE_SENSORS, TemperatureService
 
 BASE = Path(__file__).resolve().parent
-CONFIG_PATH = BASE / "config.json"
-STATE_PATH = BASE / "data" / "state.json"
-HEATER_STATS_PATH = BASE / "heater_statistics.json"
-DEVICE_STATS_PATH = BASE / "device_statistics.json"
-EVENT_LOG_PATH = BASE / "event_log.json"
+DATA_DIR = BASE / "data"
+CONFIG_DEFAULTS_PATH = BASE / "config.defaults.json"
+CONFIG_PATH = DATA_DIR / "config.json"
+STATE_PATH = DATA_DIR / "state.json"
+HEATER_STATS_PATH = DATA_DIR / "heater_statistics.json"
+DEVICE_STATS_PATH = DATA_DIR / "device_statistics.json"
+EVENT_LOG_PATH = DATA_DIR / "event_log.json"
 LOG_DIR = BASE / "logs"
 LOG_DIR.mkdir(exist_ok=True)
-STATE_PATH.parent.mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -33,6 +36,12 @@ _runtime: Dict[str, Any] = {
     "last_command": None,
     "started_at": datetime.now().isoformat(timespec="seconds"),
     "scheduler": {"last_action_key": None, "manual_run_until": None, "auto_suspended_date": None},
+    "solar_heating": {
+        "last_start_date": None,
+        "auto_started_date": None,
+        "safe_stop_started_date": None,
+        "safe_stop_completed_date": None
+    },
     "heater_safe_stop": {
         "state": "IDLE",
         "running": False,
@@ -45,6 +54,7 @@ _runtime: Dict[str, Any] = {
 }
 _safe_stop_thread = None
 _safe_stop_reset_thread = None
+_solar_safe_stop_monitor_thread = None
 temperature_service = None
 SAFE_STOP_COMPLETED_VISIBLE_SECONDS = 3
 MAX_EVENTS = 500
@@ -60,13 +70,48 @@ STATS_DEFAULTS = {
 }
 
 
+def write_default_json(path, data):
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def migrate_or_create_json(path, legacy_path, default_data):
+    if path.exists():
+        return
+    if legacy_path.exists():
+        shutil.move(str(legacy_path), str(path))
+        return
+    write_default_json(path, default_data)
+
+
+def initialize_runtime_data():
+    DATA_DIR.mkdir(exist_ok=True)
+    if not CONFIG_PATH.exists():
+        legacy_config_path = BASE / "config.json"
+        if legacy_config_path.exists():
+            shutil.move(str(legacy_config_path), str(CONFIG_PATH))
+        elif CONFIG_DEFAULTS_PATH.exists():
+            shutil.copyfile(CONFIG_DEFAULTS_PATH, CONFIG_PATH)
+        else:
+            write_default_json(CONFIG_PATH, {})
+    migrate_or_create_json(DEVICE_STATS_PATH, BASE / "device_statistics.json", {"updated_at": None, "relays": {}})
+    migrate_or_create_json(HEATER_STATS_PATH, BASE / "heater_statistics.json", STATS_DEFAULTS)
+    migrate_or_create_json(EVENT_LOG_PATH, BASE / "event_log.json", [])
+
+
+initialize_runtime_data()
+
+
 def now():
     return datetime.now()
 
 
 def load_config():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+    changed = ensure_config_defaults(cfg)
+    if changed:
+        save_config(cfg)
+    return cfg
 
 
 def app_version(cfg):
@@ -76,6 +121,25 @@ def app_version(cfg):
 def save_config(cfg):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+
+def ensure_config_defaults(cfg):
+    changed = False
+    if "solar_heating" not in cfg or not isinstance(cfg.get("solar_heating"), dict):
+        cfg["solar_heating"] = {}
+        changed = True
+    solar = cfg["solar_heating"]
+    defaults = {
+        "enabled": False,
+        "water_temperature_threshold": 29.0,
+        "start_time": "08:00",
+        "forced_stop_time": "17:00"
+    }
+    for key, value in defaults.items():
+        if key not in solar:
+            solar[key] = value
+            changed = True
+    return changed
 
 
 def load_state():
@@ -91,6 +155,7 @@ def save_state(extra=None):
     with _lock:
         data = {
             "scheduler": _runtime.get("scheduler", {}),
+            "solar_heating": _runtime.get("solar_heating", {}),
             "saved_at": now().isoformat(timespec="seconds")
         }
         if extra:
@@ -758,6 +823,14 @@ def parse_today_time(hhmm: str):
     return n.replace(hour=h, minute=m, second=0, microsecond=0)
 
 
+def valid_hhmm(value):
+    try:
+        parse_today_time(value)
+        return True
+    except Exception:
+        return False
+
+
 def pump_window(cfg):
     p = cfg["pump"]
     start = parse_today_time(p.get("start_time", "09:00"))
@@ -770,6 +843,152 @@ def pump_status_from_runtime(cfg):
     p = cfg["pump"]
     key = f"{p['device']}:{p['relay']}"
     return _runtime.get("relays", {}).get(key, {}).get("active")
+
+
+def water_temperature_snapshot():
+    if temperature_service is None:
+        return None
+    water = temperature_service.snapshot().get("sensors", {}).get("water")
+    if not water or not water.get("online"):
+        return None
+    try:
+        return float(water.get("value"))
+    except (TypeError, ValueError):
+        return None
+
+
+def solar_heating_config(cfg):
+    ensure_config_defaults(cfg)
+    return cfg["solar_heating"]
+
+
+def solar_heating_window(cfg):
+    solar = solar_heating_config(cfg)
+    return (
+        parse_today_time(solar.get("start_time", "08:00")),
+        parse_today_time(solar.get("forced_stop_time", "17:00"))
+    )
+
+
+def solar_heating_snapshot(cfg=None):
+    if cfg is None:
+        cfg = load_config()
+    solar = dict(solar_heating_config(cfg))
+    start, stop = solar_heating_window(cfg)
+    with _lock:
+        runtime = dict(_runtime["solar_heating"])
+    water_temperature = water_temperature_snapshot()
+    return {
+        **solar,
+        "status": "ON" if solar.get("enabled") else "OFF",
+        "water_temperature": water_temperature,
+        "operating_start_time": start.strftime("%H:%M"),
+        "operating_stop_time": stop.strftime("%H:%M"),
+        "safe_stop_time": (stop - timedelta(minutes=2)).strftime("%H:%M"),
+        "runtime": runtime
+    }
+
+
+def record_solar_event(event, reason=""):
+    record_event("Solar Heating", "Automation", event, "Solar Heating", reason)
+    log(f"SOLAR_HEATING {event} | {reason}")
+
+
+def monitor_solar_safe_stop_completion(target_date):
+    while True:
+        safe_stop = safe_stop_snapshot()
+        if not safe_stop.get("running"):
+            if safe_stop.get("state") == "COMPLETED":
+                with _lock:
+                    state = _runtime["solar_heating"]
+                    if state.get("safe_stop_completed_date") != target_date:
+                        state["safe_stop_completed_date"] = target_date
+                        save_state()
+                        record_solar_event("Automatic Safe Stop completed")
+            return
+        time.sleep(1)
+
+
+def start_solar_safe_stop_monitor(target_date):
+    global _solar_safe_stop_monitor_thread
+    if _solar_safe_stop_monitor_thread and _solar_safe_stop_monitor_thread.is_alive():
+        return
+    _solar_safe_stop_monitor_thread = threading.Thread(
+        target=monitor_solar_safe_stop_completion,
+        args=(target_date,),
+        daemon=True
+    )
+    _solar_safe_stop_monitor_thread.start()
+
+
+def solar_heating_tick():
+    cfg = load_config()
+    solar = solar_heating_config(cfg)
+    today = date.today().isoformat()
+    state = _runtime["solar_heating"]
+
+    if not solar.get("enabled"):
+        return
+
+    current = now()
+    start, stop = solar_heating_window(cfg)
+    safe_stop_at = stop - timedelta(minutes=2)
+
+    if state.get("auto_started_date") == today:
+        safe_stop = safe_stop_snapshot()
+        if (
+            state.get("safe_stop_started_date") == today
+            and state.get("safe_stop_completed_date") != today
+            and safe_stop.get("state") == "COMPLETED"
+            and not safe_stop.get("running")
+        ):
+            state["safe_stop_completed_date"] = today
+            save_state()
+            record_solar_event("Automatic Safe Stop completed")
+
+        if current >= safe_stop_at and state.get("safe_stop_started_date") != today:
+            state["safe_stop_started_date"] = today
+            save_state()
+            record_solar_event("Automatic Safe Stop started")
+            start_heater_safe_stop(source="solar_heating_safe_stop")
+            start_solar_safe_stop_monitor(today)
+        return
+
+    if current < start or current >= stop or state.get("last_start_date") == today:
+        return
+
+    state["last_start_date"] = today
+    water_temperature = water_temperature_snapshot()
+    if water_temperature is None:
+        save_state()
+        record_solar_event("Automatic heating skipped", "Water temperature unavailable")
+        return
+
+    threshold = float(solar.get("water_temperature_threshold", 29.0))
+    if water_temperature > threshold:
+        save_state()
+        record_solar_event(
+            f"Automatic heating skipped (Water already {water_temperature:.1f}°C)"
+        )
+        return
+
+    pump_dev, pump_no = pump_relay(cfg)
+    heater_dev, heater_no = heater_relay(cfg)
+    pump_status = set_one_raw(cfg, pump_dev, pump_no, True, source="solar_heating")
+    if not relay_set_confirmed(pump_status, True):
+        save_state()
+        record_solar_event("Automatic heating skipped", "Pump start was not confirmed")
+        return
+    heater_status = set_one_raw(cfg, heater_dev, heater_no, True, source="solar_heating")
+    if not relay_set_confirmed(heater_status, True):
+        save_state()
+        record_solar_event("Automatic heating skipped", "Heater start was not confirmed")
+        return
+    state["auto_started_date"] = today
+    state["safe_stop_started_date"] = None
+    state["safe_stop_completed_date"] = None
+    save_state()
+    record_solar_event(f"Automatic heating started (Water {water_temperature:.1f}°C)")
 
 
 def scheduler_tick():
@@ -836,10 +1055,13 @@ def background_loop():
     st = load_state()
     if isinstance(st.get("scheduler"), dict):
         _runtime["scheduler"].update(st["scheduler"])
+    if isinstance(st.get("solar_heating"), dict):
+        _runtime["solar_heating"].update(st["solar_heating"])
     while True:
         try:
             poll_all()
             scheduler_tick()
+            solar_heating_tick()
         except Exception as exc:
             log(f"ERRORE background: {exc}")
         time.sleep(load_config()["app"].get("poll_seconds", 4))
@@ -904,11 +1126,13 @@ def api_status():
             "heater_statistics": heater_statistics_snapshot(),
             "statistics": statistics_snapshot(cfg),
             "pump": pump,
+            "solar_heating": solar_heating_snapshot(cfg),
             "runtime": {
                 "started_at": _runtime["started_at"],
                 "last_poll": _runtime["last_poll"],
                 "last_command": _runtime["last_command"],
                 "scheduler": _runtime["scheduler"],
+                "solar_heating": _runtime["solar_heating"],
                 "heater_safe_stop": safe_stop_snapshot()
             },
             "now": now().isoformat(timespec="seconds")
@@ -1000,6 +1224,35 @@ def statistics_page():
 @app.route("/event-log")
 def event_log_page():
     return render_template("event_log.html")
+
+
+@app.route("/api/solar_heating/config", methods=["POST"])
+def api_solar_heating_config():
+    data = request.get_json(force=True)
+    cfg = load_config()
+    solar = solar_heating_config(cfg)
+    was_enabled = bool(solar.get("enabled"))
+
+    if "enabled" in data:
+        solar["enabled"] = bool(data["enabled"])
+    if "water_temperature_threshold" in data:
+        solar["water_temperature_threshold"] = float(data["water_temperature_threshold"])
+    if "start_time" in data:
+        if not valid_hhmm(data["start_time"]):
+            return jsonify({"ok": False, "error": "Invalid start_time"}), 400
+        solar["start_time"] = data["start_time"]
+    if "forced_stop_time" in data:
+        if not valid_hhmm(data["forced_stop_time"]):
+            return jsonify({"ok": False, "error": "Invalid forced_stop_time"}), 400
+        solar["forced_stop_time"] = data["forced_stop_time"]
+
+    save_config(cfg)
+    is_enabled = bool(solar.get("enabled"))
+    if is_enabled != was_enabled:
+        record_solar_event("Solar Heating enabled" if is_enabled else "Solar Heating disabled")
+    else:
+        record_event("Configuration", "Solar Heating", "Configuration changed", "Manual", f"Solar Heating configuration updated: {solar}")
+    return jsonify({"ok": True, "solar_heating": solar_heating_snapshot(cfg)})
 
 
 @app.route("/api/pump/config", methods=["POST"])

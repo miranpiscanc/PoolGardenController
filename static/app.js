@@ -85,6 +85,7 @@ async function refresh(){
     }
     document.getElementById('bar').style.width=pumpDisplayCache.bar+'%';
     renderTemperatures(s);
+    renderSolarHeating(s);
     renderCards(s);
     renderDiag(s);
   }catch(e){ const gs=document.getElementById('globalStatus'); gs.textContent='🔴 Server non raggiungibile'; gs.className='pill bad'; }
@@ -123,6 +124,32 @@ function renderTemperatures(s){
     comm.textContent='Caricamento…';
     comm.className='pill gray';
   }
+}
+function renderSolarHeating(s){
+  const solar=s.solar_heating||{};
+  const enabled=!!solar.enabled;
+  const state=document.getElementById('solarHeatingState');
+  if(state){
+    state.textContent=enabled?'ON':'OFF';
+    state.className='state '+(enabled?'on':'off');
+  }
+  const toggle=document.getElementById('solarHeatingToggle');
+  if(toggle){
+    toggle.textContent=enabled?'Disattiva':'Attiva';
+    toggle.className=enabled?'off':'on';
+  }
+  const water=document.getElementById('solarWaterTemperature');
+  if(water) water.textContent=solar.water_temperature===null || solar.water_temperature===undefined ? '--' : Number(solar.water_temperature).toFixed(1)+' °C';
+  const thresholdDisplay=document.getElementById('solarThresholdDisplay');
+  if(thresholdDisplay) thresholdDisplay.textContent=Number(solar.water_temperature_threshold||29).toFixed(1)+' °C';
+  const operating=document.getElementById('solarOperatingTime');
+  if(operating) operating.textContent=`${solar.operating_start_time||solar.start_time||'08:00'} → ${solar.operating_stop_time||solar.forced_stop_time||'17:00'}`;
+  const threshold=document.getElementById('solarThreshold');
+  if(threshold && document.activeElement!==threshold) threshold.value=Number(solar.water_temperature_threshold||29).toFixed(1);
+  const start=document.getElementById('solarStartTime');
+  if(start && document.activeElement!==start) start.value=solar.start_time||'08:00';
+  const stop=document.getElementById('solarStopTime');
+  if(stop && document.activeElement!==stop) stop.value=solar.forced_stop_time||'17:00';
 }
 function renderCards(s){
   const root=document.getElementById('relayCards'); root.innerHTML='';
@@ -194,6 +221,20 @@ async function refreshEvents(){
 async function setRelay(device,relay,active){ await api('/api/relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device,relay,active})}); await refresh(); }
 async function safeStopHeater(){ await api('/api/heater/safe_stop',{method:'POST'}); await refresh(); }
 async function savePumpConfig(){ await api('/api/pump/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start_time:document.getElementById('startTime').value,duration_hours:parseFloat(document.getElementById('duration').value),mode:document.getElementById('mode').value})}); await refresh(); }
+async function saveSolarHeatingConfig(extra={}){
+  const payload={
+    water_temperature_threshold:parseFloat(document.getElementById('solarThreshold').value),
+    start_time:document.getElementById('solarStartTime').value,
+    forced_stop_time:document.getElementById('solarStopTime').value,
+    ...extra
+  };
+  await api('/api/solar_heating/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  await refresh();
+}
+async function toggleSolarHeating(){
+  const enabled=!((lastStatus&&lastStatus.solar_heating&&lastStatus.solar_heating.enabled)||false);
+  await saveSolarHeatingConfig({enabled});
+}
 async function resetAuto(){ await api('/api/pump/reset_auto',{method:'POST'}); await refresh(); }
 if(document.getElementById('relayCards')){ refresh(); refreshTimer=setInterval(refresh, refreshMs); }
 if(document.getElementById('statisticsCards')){ refreshStatistics(); refreshTimer=setInterval(refreshStatistics, refreshMs); }

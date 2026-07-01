@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "Piscina e luci giardino",
-    "version": "v1.3.0",
+    "version": "v1.3.1",
     "host": "0.0.0.0",
     "port": 5000,
     "poll_seconds": 4,
@@ -33,5 +33,11 @@
     "start_time": "09:00",
     "duration_hours": 6,
     "enabled": true
+  },
+  "solar_heating": {
+    "enabled": false,
+    "water_temperature_threshold": 29.0,
+    "start_time": "08:00",
+    "forced_stop_time": "17:00"
   }
 }

@@ -20,7 +20,7 @@ Note importanti:
 - Lo stato viene letto con read1/read2.
 - I comandi usati sono quelli visti nella cattura: on1:00, on2:00, off1, off2.
 - I log giornalieri sono nella cartella logs.
-- La configurazione è nel file config.json.
+- La configurazione runtime è nel file data/config.json; i valori di fabbrica sono in config.defaults.json.
 
 Logica pompa:
 - In automatico parte alle 09:00 per 8 ore.
