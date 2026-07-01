@@ -172,7 +172,8 @@ async function api(url, options) {
 function scheduleRefresh(s) {
   const appConfig = (s.config && s.config.app) || {};
   const safeStop = ((s.runtime || {}).heater_safe_stop) || {};
-  const nextRefreshMs = (safeStop.running || safeStop.state === 'COMPLETED') ? 1000 : Number(appConfig.poll_seconds || 4) * 1000;
+  const heaterRunning = !!((s.heater_statistics || {}).active_start);
+  const nextRefreshMs = (safeStop.running || safeStop.state === 'COMPLETED' || heaterRunning) ? 1000 : Number(appConfig.poll_seconds || 4) * 1000;
   if (nextRefreshMs !== refreshMs || !refreshTimer) {
     refreshMs = nextRefreshMs;
     if (refreshTimer) clearInterval(refreshTimer);
@@ -290,6 +291,8 @@ function renderSolarHeating(s) {
   if (thresholdDisplay) thresholdDisplay.textContent = Number(solar.water_temperature_threshold || 29).toFixed(1) + ' °C';
   const operating = document.getElementById('solarOperatingTime');
   if (operating) operating.textContent = `${solar.operating_start_time || solar.start_time || '08:00'} → ${solar.operating_stop_time || solar.forced_stop_time || '17:00'}`;
+  const heatingToday = document.getElementById('solarHeatingToday');
+  if (heatingToday) heatingToday.textContent = fmtSec((s.heater_statistics || {}).daily_seconds);
   const threshold = document.getElementById('solarThreshold');
   if (threshold && document.activeElement !== threshold) threshold.value = Number(solar.water_temperature_threshold || 29).toFixed(1);
   const start = document.getElementById('solarStartTime');

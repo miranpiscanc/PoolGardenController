@@ -71,6 +71,7 @@
     "currentWaterTemperature": "Temperatura acqua attuale",
     "configuredThreshold": "Soglia configurata",
     "operatingTime": "Orario operativo",
+    "heatingToday": "Riscaldamento oggi",
     "waterTemperatureThreshold": "Soglia temperatura acqua",
     "startTime": "Ora di avvio",
     "forcedStopTime": "Ora arresto forzato",

@@ -71,6 +71,7 @@
     "currentWaterTemperature": "Current water temperature",
     "configuredThreshold": "Configured threshold",
     "operatingTime": "Operating time",
+    "heatingToday": "Heating today",
     "waterTemperatureThreshold": "Water temperature threshold",
     "startTime": "Start time",
     "forcedStopTime": "Forced stop time",
