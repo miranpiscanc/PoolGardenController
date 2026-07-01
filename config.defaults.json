@@ -1,7 +1,6 @@
 {
   "app": {
     "name": "Piscina e luci giardino",
-    "version": "v1.3.1",
     "host": "0.0.0.0",
     "port": 5000,
     "poll_seconds": 4,

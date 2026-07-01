@@ -14,6 +14,7 @@ from temperature_service import DEFAULT_TEMPERATURE_SENSORS, TemperatureService
 
 BASE = Path(__file__).resolve().parent
 DATA_DIR = BASE / "data"
+VERSION_PATH = BASE / "VERSION"
 CONFIG_DEFAULTS_PATH = BASE / "config.defaults.json"
 CONFIG_PATH = DATA_DIR / "config.json"
 STATE_PATH = DATA_DIR / "state.json"
@@ -114,8 +115,12 @@ def load_config():
     return cfg
 
 
-def app_version(cfg):
-    return cfg.get("app", {}).get("version", "")
+def app_version(cfg=None):
+    try:
+        version = VERSION_PATH.read_text(encoding="utf-8").strip()
+        return version or "Unknown Version"
+    except Exception:
+        return "Unknown Version"
 
 
 def save_config(cfg):
@@ -125,6 +130,10 @@ def save_config(cfg):
 
 def ensure_config_defaults(cfg):
     changed = False
+    app_cfg = cfg.get("app")
+    if isinstance(app_cfg, dict) and "version" in app_cfg:
+        app_cfg.pop("version", None)
+        changed = True
     if "solar_heating" not in cfg or not isinstance(cfg.get("solar_heating"), dict):
         cfg["solar_heating"] = {}
         changed = True
