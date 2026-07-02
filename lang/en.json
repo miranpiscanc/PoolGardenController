@@ -18,7 +18,8 @@
   "nav": {
     "dashboard": "← Dashboard",
     "statistics": "📊 Statistics",
-    "eventLog": "📜 Event Log"
+    "eventLog": "📜 Event Log",
+    "refreshRelays": "Refresh relays"
   },
   "status": {
     "on": "ON",
@@ -121,6 +122,21 @@
     "turnOn": "Turn on",
     "turnOff": "Turn off"
   },
+  "telegram": {
+    "title": "📲 Telegram Notifications",
+    "enabled": "Enable Telegram notifications",
+    "botToken": "Bot Token",
+    "chatId": "Chat ID",
+    "reveal": "Show",
+    "save": "Save Telegram settings",
+    "test": "💬 Test connection",
+    "saved": "Telegram settings saved.",
+    "saveFailed": "Unable to save Telegram settings.",
+    "testing": "Testing Telegram connection...",
+    "testFailed": "Telegram connection failed.",
+    "tokenConfigured": "Saved token: {token}",
+    "tokenNotConfigured": "No bot token configured."
+  },
   "safeStop": {
     "button": "🔥 Safe Stop",
     "inProgress": "Safe Stop in progress",
@@ -162,7 +178,7 @@
   "diagnostics": {
     "title": "Diagnostics",
     "serverTime": "Server time: {time}",
-    "lastPolling": "Last polling: {time}",
+    "lastPolling": "Last relay refresh: {time}",
     "lastCommand": "Last command: {command}",
     "elapsedMs": "{ms} ms",
     "ok": "OK",

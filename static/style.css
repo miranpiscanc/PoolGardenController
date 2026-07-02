@@ -36,6 +36,11 @@ button,.button-link{cursor:pointer;background:#f3f7fa;font-weight:700;text-decor
 button.on{background:#e5f8ea;color:#117236}
 button.off{background:#ffe8ea;color:#a31526}
 button.secondary{background:#f6f6f6;color:#333}
+.checkbox-row{display:flex;align-items:center;gap:8px;margin:10px 0 0}
+.checkbox-row input{width:auto}
+.password-field{display:flex;gap:8px}
+.password-field input{min-width:0;flex:1}
+.telegram-status{margin-top:10px;font-weight:700}
 .nav-actions{margin:-6px 0 16px}
 .buttons{margin-top:16px}
 .timeline{height:16px;background:#e8edf1;border-radius:999px;overflow:hidden;margin:16px 0 8px}

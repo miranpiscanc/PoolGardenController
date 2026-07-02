@@ -22,6 +22,7 @@
     <nav class="row gap nav-actions">
       <a class="button-link" href="/statistics" data-i18n="nav.statistics"></a>
       <a class="button-link" href="/event-log" data-i18n="nav.eventLog"></a>
+      <button class="secondary" type="button" onclick="refreshRelays()" data-i18n="nav.refreshRelays"></button>
     </nav>
 
     <section class="card pump-card">
@@ -144,6 +145,31 @@
       <div class="row gap">
         <button onclick="saveSolarHeatingConfig()" data-i18n="solar.saveAutomation"></button>
       </div>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="telegram.title"></h2>
+      <label class="checkbox-row">
+        <input id="telegramEnabled" type="checkbox">
+        <span data-i18n="telegram.enabled"></span>
+      </label>
+      <div class="grid two">
+        <label><span data-i18n="telegram.botToken"></span>
+          <div class="password-field">
+            <input id="telegramBotToken" type="password" autocomplete="new-password">
+            <button class="secondary" type="button" onclick="toggleTelegramTokenVisibility()" data-i18n="telegram.reveal"></button>
+          </div>
+          <small id="telegramTokenHint" class="muted"></small>
+        </label>
+        <label><span data-i18n="telegram.chatId"></span>
+          <input id="telegramChatId" type="text">
+        </label>
+      </div>
+      <div class="row gap">
+        <button onclick="saveTelegramConfig()" data-i18n="telegram.save"></button>
+        <button class="secondary" onclick="testTelegramConnection()" data-i18n="telegram.test"></button>
+      </div>
+      <div id="telegramStatus" class="muted telegram-status"></div>
     </section>
 
     <section class="cards" id="relayCards"></section>

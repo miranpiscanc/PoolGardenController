@@ -9,6 +9,7 @@ from typing import Dict, Any
 
 from flask import Flask, jsonify, render_template, request
 
+from notification_service import NotificationService
 from relay_client import HHCRelayClient
 from temperature_service import DEFAULT_TEMPERATURE_SENSORS, TemperatureService
 
@@ -63,6 +64,7 @@ _safe_stop_thread = None
 _safe_stop_reset_thread = None
 _solar_safe_stop_monitor_thread = None
 temperature_service = None
+notification_service = NotificationService()
 SAFE_STOP_COMPLETED_VISIBLE_SECONDS = 3
 MAX_EVENTS = 500
 DEFAULT_LANGUAGE = "en"
@@ -135,6 +137,26 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2, ensure_ascii=False)
 
 
+def masked_token(value):
+    value = str(value or "")
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "••••"
+    return f"{value[:4]}••••{value[-4:]}"
+
+
+def public_config(cfg):
+    public = json.loads(json.dumps(cfg))
+    telegram = public.get("notifications", {}).get("telegram")
+    if isinstance(telegram, dict):
+        token = telegram.get("bot_token")
+        telegram["bot_token"] = ""
+        telegram["bot_token_masked"] = masked_token(token)
+        telegram["bot_token_configured"] = bool(token)
+    return public
+
+
 def ensure_config_defaults(cfg):
     changed = False
     app_cfg = cfg.get("app")
@@ -157,6 +179,23 @@ def ensure_config_defaults(cfg):
     for key, value in defaults.items():
         if key not in solar:
             solar[key] = value
+            changed = True
+    if "notifications" not in cfg or not isinstance(cfg.get("notifications"), dict):
+        cfg["notifications"] = {}
+        changed = True
+    notifications = cfg["notifications"]
+    if "telegram" not in notifications or not isinstance(notifications.get("telegram"), dict):
+        notifications["telegram"] = {}
+        changed = True
+    telegram = notifications["telegram"]
+    telegram_defaults = {
+        "enabled": False,
+        "bot_token": "",
+        "chat_id": ""
+    }
+    for key, value in telegram_defaults.items():
+        if key not in telegram:
+            telegram[key] = value
             changed = True
     return changed
 
@@ -278,6 +317,10 @@ def source_label(source):
         return "Scheduler"
     if source in ("manual", "manual_timer"):
         return "Manual"
+    if source == "startup":
+        return "Startup"
+    if source == "manual_refresh":
+        return "Manual refresh"
     return source.replace("_", " ").title()
 
 
@@ -290,6 +333,10 @@ def event_reason(source, active=None):
         return "Protection sequence"
     if source == "poll":
         return "Backend polling"
+    if source == "startup":
+        return "Startup check"
+    if source == "manual_refresh":
+        return "Explicit user refresh"
     if source == "manual":
         if active is True:
             return "Manual ON command"
@@ -404,6 +451,8 @@ def record_event(device="", relay="", event="", source="", reason=""):
         events = load_event_log()
         events.append(entry)
         save_event_log(events)
+    if "thermometer OFFLINE" in str(event):
+        notify_sensor_offline(load_config())
     return entry
 
 
@@ -478,6 +527,9 @@ def sync_device_statistics(cfg, device_id, relay_number, active, source="poll", 
                     source_label(source),
                     reason or event_reason(source, True)
                 )
+                pump_dev, pump_no = pump_relay(cfg)
+                if same_relay(device_id, relay_number, pump_dev, pump_no) and source != "poll":
+                    notify_pump_started(cfg)
         elif active is False and active_start:
             try:
                 add_runtime(relay_stats, datetime.fromisoformat(active_start), current)
@@ -560,6 +612,128 @@ def log(msg: str):
     print(line, end="")
 
 
+def format_runtime(seconds):
+    seconds = max(0, int(seconds or 0))
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    return f"{hours}h {minutes:02d}m"
+
+
+def notification_time():
+    return now().strftime("%H:%M")
+
+
+def send_notification(message, cfg=None):
+    if cfg is None:
+        cfg = load_config()
+    return notification_service.send_notification(cfg, message)
+
+
+def telegram_test_message(cfg):
+    return (
+        "🏊 PoolGardenController\n\n"
+        "✅ Telegram connection successful.\n\n"
+        f"Software version:\n{app_version(cfg)}\n\n"
+        "Controller:\nOnline\n\n"
+        f"Date and time:\n{now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+
+
+def notify_pump_started(cfg):
+    send_notification(
+        "💧 PoolGardenController\n\n"
+        "Pump started.\n\n"
+        f"Time:\n{notification_time()}",
+        cfg
+    )
+
+
+def notify_heater_started_automatically(cfg, water_temperature, threshold):
+    send_notification(
+        "🔥 PoolGardenController\n\n"
+        "Solar Heating Automation\n\n"
+        "Heater started automatically.\n\n"
+        f"Water temperature:\n{water_temperature:.1f} °C\n\n"
+        f"Threshold:\n{threshold:.1f} °C\n\n"
+        f"Time:\n{notification_time()}",
+        cfg
+    )
+
+
+def notify_safe_stop_started(cfg):
+    send_notification(
+        "🛑 PoolGardenController\n\n"
+        "Safe Stop started.\n\n"
+        "Heater OFF.\n\n"
+        "Cooling pump running.",
+        cfg
+    )
+
+
+def notify_safe_stop_completed(cfg):
+    send_notification(
+        "✅ PoolGardenController\n\n"
+        "Safe Stop completed.\n\n"
+        "Pump stopped.",
+        cfg
+    )
+
+
+def notify_automation_completed(cfg, early=False):
+    water_temperature = water_temperature_snapshot()
+    heating_today = format_runtime(heater_statistics_snapshot().get("daily_seconds"))
+    if early:
+        message = (
+            "☀ PoolGardenController\n\n"
+            "Solar Heating Automation completed early.\n\n"
+            "Target temperature maintained.\n\n"
+            f"Heating today:\n{heating_today}"
+        )
+    else:
+        final_temperature = "--" if water_temperature is None else f"{water_temperature:.1f} °C"
+        message = (
+            "☀ PoolGardenController\n\n"
+            "Solar Heating Automation completed.\n\n"
+            f"Heating today:\n{heating_today}\n\n"
+            f"Final water temperature:\n{final_temperature}"
+        )
+    send_notification(message, cfg)
+
+
+def notify_sensor_offline(cfg):
+    send_notification(
+        "⚠ PoolGardenController\n\n"
+        "Temperature sensor offline.",
+        cfg
+    )
+
+
+def relay_diagnostic_message(cfg, device_id=None, relay_number=None, operation="READ", status=None):
+    status = status or {}
+    dev = cfg.get("devices", {}).get(device_id, {}) if device_id else {}
+    timestamp = status.get("updated_at") or now().isoformat(timespec="seconds")
+    response = status.get("response")
+    error = status.get("error") or status.get("command_error") or "Unknown communication error"
+    return (
+        "⚠ PoolGardenController\n\n"
+        "Relay communication failure.\n\n"
+        f"Device:\n{dev.get('name') or device_id or '-'}\n\n"
+        f"IP address:\n{dev.get('ip') or '-'}\n\n"
+        f"Relay:\n{relay_number or '-'}\n\n"
+        f"Operation:\n{operation or status.get('operation') or '-'}\n\n"
+        f"Reason:\n{error}\n\n"
+        f"Raw response:\n{response if response else '-'}\n\n"
+        f"Timestamp:\n{timestamp}"
+    )
+
+
+def notify_communication_error(cfg, device_id=None, relay_number=None, operation="READ", status=None):
+    send_notification(
+        relay_diagnostic_message(cfg, device_id, relay_number, operation, status),
+        cfg
+    )
+
+
 def client_for(cfg, device_id):
     d = cfg["devices"][device_id]
     return HHCRelayClient(d["ip"], d["port"], cfg["app"].get("tcp_timeout_seconds", 2.0))
@@ -578,50 +752,156 @@ def parse_active(response: str, relay_number: str):
     return None
 
 
+def has_controller_identity(response: str):
+    return "hhc-net2d" in (response or "").lower()
+
+
 def read_one(cfg, device_id, relay_number):
     c = client_for(cfg, device_id)
     res = c.read_relay(relay_number)
     active = parse_active(res.response, relay_number) if res.ok else None
+    has_response = bool((res.response or "").strip())
+    incomplete = bool(res.ok and has_response and active not in (True, False))
+    ok = bool(res.ok and (active in (True, False) or incomplete))
+    error = res.error
+    if res.ok and not has_response:
+        ok = False
+        error = "No response received"
     return {
-        "ok": res.ok,
+        "ok": ok,
         "active": active,
         "response": res.response,
         "elapsed_ms": res.elapsed_ms,
-        "error": res.error,
+        "error": error,
+        "incomplete": incomplete,
+        "controller_identified": has_controller_identity(res.response),
+        "operation": "READ",
         "updated_at": now().isoformat(timespec="seconds")
     }
 
 
+def cached_relay_status(device_id, relay_number):
+    return _runtime.get("relays", {}).get(relay_key(device_id, relay_number), {})
+
+
+def refresh_device_status(cfg, device_id):
+    dev = cfg["devices"][device_id]
+    relays = _runtime.get("relays", {})
+    statuses = [
+        relays.get(relay_key(device_id, relay_no), {})
+        for relay_no in dev.get("relays", {}).keys()
+    ]
+    has_status = bool(statuses)
+    ok = has_status and all(st.get("ok") for st in statuses)
+    last_error = next((st.get("error", "") for st in statuses if not st.get("ok")), "")
+    max_elapsed = max((st.get("elapsed_ms") or 0 for st in statuses), default=0)
+    _runtime["devices"][device_id] = {
+        "ok": ok,
+        "name": dev["name"],
+        "ip": dev["ip"],
+        "port": dev["port"],
+        "elapsed_ms": max_elapsed,
+        "error": last_error,
+        "updated_at": now().isoformat(timespec="seconds")
+    }
+
+
+def cache_relay_status(cfg, device_id, relay_number, status, source="operation", notify_on_error=False):
+    key = relay_key(device_id, relay_number)
+    cached = dict(status)
+    previous = cached_relay_status(device_id, relay_number)
+    if cached.get("active") not in (True, False) and previous.get("active") in (True, False):
+        cached["active"] = previous.get("active")
+        cached["state_preserved"] = True
+        if not cached.get("response"):
+            cached["response"] = previous.get("response", "")
+    with _lock:
+        _runtime["relays"][key] = cached
+        refresh_device_status(cfg, device_id)
+    if cached.get("ok") and cached.get("active") in (True, False):
+        sync_device_statistics(cfg, device_id, relay_number, cached.get("active"), source=source)
+    elif not cached.get("ok"):
+        record_event(
+            relay_label(cfg, device_id, relay_number),
+            f"Relay {relay_number}",
+            "Communication error",
+            source_label(source),
+            cached.get("error") or "Relay read failed"
+        )
+        if notify_on_error:
+            notify_communication_error(
+                cfg,
+                device_id,
+                relay_number,
+                cached.get("operation") or "READ",
+                cached
+            )
+    return cached
+
+
+def read_and_cache_one(cfg, device_id, relay_number, source="operation", notify_on_error=False):
+    return cache_relay_status(
+        cfg,
+        device_id,
+        relay_number,
+        read_one(cfg, device_id, relay_number),
+        source=source,
+        notify_on_error=notify_on_error
+    )
+
+
 def set_one_raw(cfg, device_id, relay_number, active: bool, source="manual"):
     c = client_for(cfg, device_id)
+    action = "ON" if active else "OFF"
     res = c.set_relay(relay_number, active)
-    # Dopo ogni comando leggiamo lo stato reale, come relay_demo.
-    status = read_one(cfg, device_id, relay_number)
+    if res.ok:
+        time.sleep(2)
+        status = read_and_cache_one(cfg, device_id, relay_number, source=source, notify_on_error=True)
+    else:
+        previous = cached_relay_status(device_id, relay_number)
+        status = cache_relay_status(
+            cfg,
+            device_id,
+            relay_number,
+            {
+                "ok": False,
+                "active": previous.get("active"),
+                "response": res.response,
+                "elapsed_ms": res.elapsed_ms,
+                "error": res.error,
+                "operation": "WRITE",
+                "updated_at": now().isoformat(timespec="seconds")
+            },
+            source=source,
+            notify_on_error=True
+        )
     status["command_ok"] = res.ok
     status["command_error"] = res.error
-    action = "ON" if active else "OFF"
+    incomplete_status = bool(status.get("incomplete") or status.get("state_preserved"))
+    if res.ok and status.get("ok") and status.get("active") is not active and not incomplete_status:
+        status["ok"] = False
+        status["error"] = f"Relay verification failed: expected {action}, read {status.get('active')}"
+        cache_relay_status(cfg, device_id, relay_number, status, source=source, notify_on_error=False)
+        record_event(
+            relay_label(cfg, device_id, relay_number),
+            f"Relay {relay_number}",
+            "Command verification failed",
+            source_label(source),
+            status["error"]
+        )
     with _lock:
         _runtime["last_command"] = {
             "device": device_id,
             "relay": relay_number,
             "action": action,
             "source": source,
-            "ok": res.ok and status.get("ok"),
+            "ok": res.ok and status.get("ok") and (status.get("active") is active or incomplete_status),
+            "verified": status.get("active") is active,
             "response": res.response,
             "read_response": status.get("response"),
             "time": now().isoformat(timespec="seconds")
         }
     log(f"{source.upper()} {device_id}.{relay_number} {action} | cmd_ok={res.ok} cmd_resp={res.response!r} | stato={status.get('active')} resp={status.get('response')!r} err={res.error or status.get('error','')}")
-    if not status.get("ok"):
-        record_event(
-            relay_label(cfg, device_id, relay_number),
-            f"Relay {relay_number}",
-            "Communication error",
-            source_label(source),
-            status.get("error") or res.error or "Relay read failed after command"
-        )
-    if status.get("ok") and status.get("active") in (True, False):
-        sync_device_statistics(cfg, device_id, relay_number, status.get("active"), source=source)
     return status
 
 
@@ -707,6 +987,7 @@ def reset_safe_stop_after_completed(completed_at):
 
 def complete_safe_stop(phase="Arresto sicuro completato"):
     global _safe_stop_reset_thread
+    cfg = load_config()
     completed_at = now().isoformat(timespec="microseconds")
     set_safe_stop_state(
         state="COMPLETED",
@@ -717,6 +998,7 @@ def complete_safe_stop(phase="Arresto sicuro completato"):
         error=None
     )
     record_event("Heater", "Relay 1", "Safe Stop Completed", "Safe Stop", phase)
+    notify_safe_stop_completed(cfg)
     log(f"HEATER_SAFE_STOP COMPLETED | {phase}")
     _safe_stop_reset_thread = threading.Thread(
         target=reset_safe_stop_after_completed,
@@ -733,33 +1015,29 @@ def heater_safe_stop_worker(source="manual"):
         pump_dev, pump_no = pump_relay(cfg)
 
         set_safe_stop_state(state="SAFE_STOP_START", phase="Verifica stato riscaldatore", error=None)
-        heater_status = read_one(cfg, heater_dev, heater_no)
+        heater_status = read_and_cache_one(cfg, heater_dev, heater_no, source=source, notify_on_error=False)
         if not heater_status.get("ok"):
             fail_safe_stop(heater_status.get("error") or "Riscaldatore non raggiungibile")
             return
-        if heater_status.get("active") is False:
-            complete_safe_stop("Riscaldatore già spento")
-            poll_all()
-            return
-        if heater_status.get("active") is not True:
-            fail_safe_stop("Stato riscaldatore non valido")
-            return
 
         set_safe_stop_state(phase="Verifica stato pompa")
-        pump_status = read_one(cfg, pump_dev, pump_no)
+        pump_status = read_and_cache_one(cfg, pump_dev, pump_no, source=source, notify_on_error=True)
         if not pump_status.get("ok"):
             fail_safe_stop(pump_status.get("error") or "Pompa non raggiungibile")
             return
 
-        set_safe_stop_state(phase="Spegnimento riscaldatore")
-        heater_off = set_one_raw(cfg, heater_dev, heater_no, False, source=source)
-        if not relay_set_confirmed(heater_off, False):
-            fail_safe_stop(heater_off.get("command_error") or heater_off.get("error") or "Spegnimento riscaldatore non confermato")
+        if heater_status.get("active") is True:
+            set_safe_stop_state(phase="Spegnimento riscaldatore")
+            heater_off = set_one_raw(cfg, heater_dev, heater_no, False, source=source)
+            if not relay_set_confirmed(heater_off, False):
+                fail_safe_stop(heater_off.get("command_error") or heater_off.get("error") or "Spegnimento riscaldatore non confermato")
+                return
+        elif heater_status.get("active") is not False:
+            fail_safe_stop("Stato riscaldatore non valido")
             return
 
         if pump_status.get("active") is False:
             complete_safe_stop("Riscaldatore spento, pompa già ferma")
-            poll_all()
             return
         if pump_status.get("active") is not True:
             fail_safe_stop("Stato pompa non valido")
@@ -781,7 +1059,6 @@ def heater_safe_stop_worker(source="manual"):
             return
 
         complete_safe_stop()
-        poll_all()
     except Exception as exc:
         fail_safe_stop(str(exc))
 
@@ -809,6 +1086,7 @@ def start_heater_safe_stop(source="manual"):
         _safe_stop_thread.start()
     log(f"HEATER_SAFE_STOP START | source={source}")
     record_event("Heater", "Relay 1", "Safe Stop Started", source_label(source), "Protection sequence")
+    notify_safe_stop_started(load_config())
     return True, "Safe Stop started"
 
 
@@ -846,14 +1124,33 @@ def set_one(cfg, device_id, relay_number, active: bool, source="manual"):
             "updated_at": now().isoformat(timespec="seconds")
         }
     if not active and is_pump:
-        heater_status = read_one(cfg, heater_dev, heater_no)
+        heater_status = read_and_cache_one(cfg, heater_dev, heater_no, source=source, notify_on_error=False)
         if not heater_status.get("ok"):
+            notify_communication_error(
+                cfg,
+                heater_dev,
+                heater_no,
+                heater_status.get("operation") or "READ",
+                heater_status
+            )
             return {
                 "ok": False,
                 "active": pump_status_from_runtime(cfg),
                 "response": "",
                 "elapsed_ms": heater_status.get("elapsed_ms"),
                 "error": heater_status.get("error") or "Impossibile verificare il riscaldatore",
+                "operation": heater_status.get("operation") or "READ",
+                "updated_at": now().isoformat(timespec="seconds")
+            }
+        if heater_status.get("active") not in (True, False):
+            return {
+                "ok": False,
+                "active": pump_status_from_runtime(cfg),
+                "response": heater_status.get("response", ""),
+                "elapsed_ms": heater_status.get("elapsed_ms"),
+                "error": "Relay status temporarily unavailable",
+                "operation": heater_status.get("operation") or "READ",
+                "incomplete": True,
                 "updated_at": now().isoformat(timespec="seconds")
             }
         if heater_status.get("active") is True:
@@ -871,7 +1168,7 @@ def set_one(cfg, device_id, relay_number, active: bool, source="manual"):
     return set_one_raw(cfg, device_id, relay_number, active, source=source)
 
 
-def poll_all():
+def refresh_all_relays(source="startup", notify_on_error=True):
     cfg = load_config()
     new_devices = {}
     new_relays = {}
@@ -881,15 +1178,21 @@ def poll_all():
         max_elapsed = 0
         for relay_no in dev["relays"].keys():
             st = read_one(cfg, dev_id, relay_no)
-            new_relays[f"{dev_id}:{relay_no}"] = st
+            previous = cached_relay_status(dev_id, relay_no)
+            if st.get("active") not in (True, False) and previous.get("active") in (True, False):
+                st["active"] = previous.get("active")
+                st["state_preserved"] = True
+                if not st.get("response"):
+                    st["response"] = previous.get("response", "")
+            new_relays[relay_key(dev_id, relay_no)] = st
             if st.get("ok") and st.get("active") in (True, False):
-                sync_device_statistics(cfg, dev_id, relay_no, st.get("active"), source="poll")
+                sync_device_statistics(cfg, dev_id, relay_no, st.get("active"), source=source)
             elif not st.get("ok"):
                 record_event(
                     relay_label(cfg, dev_id, relay_no),
                     f"Relay {relay_no}",
                     "Communication error",
-                    "Polling",
+                    source_label(source),
                     st.get("error") or "Relay read failed"
                 )
             max_elapsed = max(max_elapsed, st.get("elapsed_ms") or 0)
@@ -905,6 +1208,22 @@ def poll_all():
             "error": last_error,
             "updated_at": now().isoformat(timespec="seconds")
         }
+        if dev_ok is False and notify_on_error:
+            failed = next(
+                (
+                    (relay_no, new_relays.get(relay_key(dev_id, relay_no), {}))
+                    for relay_no in dev.get("relays", {}).keys()
+                    if not new_relays.get(relay_key(dev_id, relay_no), {}).get("ok")
+                ),
+                (None, {})
+            )
+            notify_communication_error(
+                cfg,
+                dev_id,
+                failed[0],
+                failed[1].get("operation") or "READ",
+                failed[1]
+            )
     with _lock:
         _runtime["devices"] = new_devices
         _runtime["relays"] = new_relays
@@ -1025,9 +1344,10 @@ def early_completion_snapshot(solar, runtime):
     }
 
 
-def reconcile_solar_temperature_schedule(cfg, force_due=False):
+def reconcile_solar_temperature_schedule(cfg, force_due=False, current=None):
     solar = solar_heating_config(cfg)
-    current = now()
+    if current is None:
+        current = now()
     today = date.today().isoformat()
     start, stop = solar_heating_window(cfg)
     interval = timedelta(seconds=solar_temperature_check_interval_seconds(solar))
@@ -1192,6 +1512,7 @@ def monitor_solar_safe_stop_completion(target_date):
                         save_state()
                         event = "Automation completed early" if state.get("early_completion_completed_date") == target_date else "Automatic Safe Stop completed"
                         record_solar_event(event)
+                        notify_automation_completed(load_config(), early=state.get("early_completion_completed_date") == target_date)
             return
         time.sleep(1)
 
@@ -1218,6 +1539,7 @@ def complete_solar_for_today(state, today, event, reason=""):
     reset_early_completion_timer(state)
     save_state()
     record_solar_event(event, reason)
+    notify_automation_completed(load_config(), early=state.get("early_completion_completed_date") == today)
 
 
 def start_solar_safe_stop(state, today, event, source, early=False):
@@ -1233,19 +1555,59 @@ def start_solar_safe_stop(state, today, event, source, early=False):
 
 def update_early_completion_timer(solar, state, water_temperature, checked_at):
     target = early_completion_temperature(solar)
-    if water_temperature < target:
-        reset_early_completion_timer(state)
-        return False
-
+    confirmation_seconds = early_completion_confirmation_minutes(solar) * 60
     started_at = parse_iso_datetime(state.get("early_completion_started_at"))
+    if water_temperature < target:
+        was_running = bool(started_at)
+        elapsed_seconds = max(0, int((checked_at - started_at).total_seconds())) if started_at else 0
+        remaining_seconds = max(0, confirmation_seconds - elapsed_seconds)
+        reset_early_completion_timer(state)
+        return {
+            "completed": False,
+            "status": "cancelled" if was_running else "cancelled",
+            "target_temperature": target,
+            "elapsed_seconds": elapsed_seconds,
+            "remaining_seconds": remaining_seconds
+        }
+
     saved_target = state.get("early_completion_target_temperature")
     if not started_at or saved_target != target:
         started_at = checked_at
         state["early_completion_started_at"] = started_at.isoformat(timespec="seconds")
         state["early_completion_target_temperature"] = target
 
+    elapsed_seconds = max(0, int((checked_at - started_at).total_seconds()))
+    remaining_seconds = max(0, confirmation_seconds - elapsed_seconds)
+    completed = elapsed_seconds >= confirmation_seconds
+    return {
+        "completed": completed,
+        "status": "completed" if completed else "running",
+        "target_temperature": target,
+        "elapsed_seconds": elapsed_seconds,
+        "remaining_seconds": remaining_seconds
+    }
+
+
+def record_early_completion_debug(water_temperature, details):
+    temperature = "unavailable" if water_temperature is None else f"{water_temperature:.1f} °C"
+    record_solar_event(
+        "Early Completion debug",
+        " | ".join([
+            f"Current water temperature: {temperature}",
+            f"Early Completion Temperature: {details.get('target_temperature', 31.0):.1f} °C",
+            f"Confirmation timer elapsed: {format_runtime(details.get('elapsed_seconds', 0))}",
+            f"Confirmation timer remaining: {format_runtime(details.get('remaining_seconds', 0))}",
+            f"Timer status: {details.get('status', 'cancelled')}"
+        ])
+    )
+
+
+def early_completion_deadline_reached(solar, state, current):
+    started_at = parse_iso_datetime(state.get("early_completion_started_at"))
+    if not started_at:
+        return False
     confirmation = timedelta(minutes=early_completion_confirmation_minutes(solar))
-    return checked_at >= started_at + confirmation
+    return current >= started_at + confirmation
 
 
 def solar_heating_tick():
@@ -1276,6 +1638,7 @@ def solar_heating_tick():
             save_state()
             event = "Automation completed early" if state.get("early_completion_completed_date") == today else "Automatic Safe Stop completed"
             record_solar_event(event)
+            notify_automation_completed(cfg, early=state.get("early_completion_completed_date") == today)
         return
 
     if state.get("safe_stop_completed_date") == today or state.get("early_completion_completed_date") == today:
@@ -1299,7 +1662,33 @@ def solar_heating_tick():
             complete_solar_for_today(state, today, "Automation completed for today", "Stop time reached")
         return
 
-    next_check = reconcile_solar_temperature_schedule(cfg)
+    if early_completion_deadline_reached(solar, state, current):
+        water_temperature = water_temperature_snapshot()
+        if water_temperature is None:
+            details = {
+                "status": "cancelled",
+                "target_temperature": early_completion_temperature(solar),
+                "elapsed_seconds": early_completion_confirmation_minutes(solar) * 60,
+                "remaining_seconds": 0
+            }
+            reset_early_completion_timer(state)
+            record_early_completion_debug(water_temperature, details)
+            save_state()
+            return
+        early_details = update_early_completion_timer(solar, state, water_temperature, current)
+        record_early_completion_debug(water_temperature, early_details)
+        save_state()
+        if early_details.get("completed"):
+            start_solar_safe_stop(
+                state,
+                today,
+                "Early completion Safe Stop started",
+                "solar_heating_early_completion",
+                early=True
+            )
+        return
+
+    next_check = reconcile_solar_temperature_schedule(cfg, current=current)
     if not next_check or current < next_check:
         return
 
@@ -1309,12 +1698,20 @@ def solar_heating_tick():
     water_temperature = water_temperature_snapshot()
     if water_temperature is None:
         reset_early_completion_timer(state)
+        record_early_completion_debug(water_temperature, {
+            "status": "cancelled",
+            "target_temperature": early_completion_temperature(solar),
+            "elapsed_seconds": 0,
+            "remaining_seconds": early_completion_confirmation_minutes(solar) * 60
+        })
         schedule_solar_temperature_recheck(cfg, checked_at)
         save_state()
         record_solar_event("Automatic heating skipped", "Water temperature unavailable")
         return
 
-    if update_early_completion_timer(solar, state, water_temperature, checked_at):
+    early_details = update_early_completion_timer(solar, state, water_temperature, checked_at)
+    record_early_completion_debug(water_temperature, early_details)
+    if early_details.get("completed"):
         start_solar_safe_stop(
             state,
             today,
@@ -1334,6 +1731,7 @@ def solar_heating_tick():
     pump_active = relay_active_from_runtime(pump_dev, pump_no)
     heater_active = relay_active_from_runtime(heater_dev, heater_no)
     started_any = False
+    heater_started = False
     if pump_active is not True:
         pump_status = set_one_raw(cfg, pump_dev, pump_no, True, source="solar_heating")
         if not relay_set_confirmed(pump_status, True):
@@ -1350,6 +1748,7 @@ def solar_heating_tick():
             record_solar_event("Automatic heating skipped", "Heater start was not confirmed")
             return
         started_any = True
+        heater_started = True
     state["auto_started_date"] = today
     state["safe_stop_started_date"] = None
     state["safe_stop_completed_date"] = None
@@ -1357,6 +1756,8 @@ def solar_heating_tick():
     save_state()
     if started_any:
         record_solar_event(f"Automatic heating started (Water {water_temperature:.1f}°C)")
+        if heater_started:
+            notify_heater_started_automatically(cfg, water_temperature, threshold)
     else:
         record_solar_event(f"Heating already running (Water {water_temperature:.1f}°C)")
 
@@ -1427,14 +1828,15 @@ def background_loop():
         _runtime["scheduler"].update(st["scheduler"])
     if isinstance(st.get("solar_heating"), dict):
         _runtime["solar_heating"].update(st["solar_heating"])
+    refresh_all_relays(source="startup", notify_on_error=True)
     while True:
         try:
-            poll_all()
+            refresh_all_relays(source="poll", notify_on_error=True)
             scheduler_tick()
             solar_heating_tick()
         except Exception as exc:
             log(f"ERRORE background: {exc}")
-        time.sleep(load_config()["app"].get("poll_seconds", 4))
+        time.sleep(load_config()["app"].get("poll_seconds", 30))
 
 
 def record_application_stopped():
@@ -1519,7 +1921,7 @@ def api_status():
             "language": selected_language(cfg),
             "languages": supported_languages(),
             "app_meta": f"{version} · server su porta {port}",
-            "config": cfg,
+            "config": public_config(cfg),
             "devices": _runtime["devices"],
             "relays": _runtime["relays"],
             "temperatures": temperature_service.snapshot() if temperature_service else {},
@@ -1569,8 +1971,18 @@ def api_relay():
                 _runtime["scheduler"]["auto_suspended_date"] = date.today().isoformat()
                 log("POMPA manuale OFF, automatico sospeso fino a domani")
             save_state()
-    poll_all()
     return jsonify({"ok": status.get("ok"), "status": status})
+
+
+@app.route("/api/relays/refresh", methods=["POST"])
+def api_relays_refresh():
+    refresh_all_relays(source="manual_refresh", notify_on_error=True)
+    return jsonify({
+        "ok": all(d.get("ok") for d in _runtime.get("devices", {}).values()),
+        "devices": _runtime["devices"],
+        "relays": _runtime["relays"],
+        "last_successful_refresh": _runtime.get("last_poll")
+    })
 
 
 @app.route("/api/heater/safe_stop", methods=["POST"])
@@ -1720,6 +2132,32 @@ def api_reset_auto():
     log("POMPA automatico riattivato manualmente")
     record_event("Configuration", "Pump", "Configuration changed", "Manual", "Automatic pump schedule reactivated for today")
     return jsonify({"ok": True})
+
+
+@app.route("/api/notifications/telegram/config", methods=["POST"])
+def api_telegram_config():
+    data = request.get_json(force=True)
+    cfg = load_config()
+    ensure_config_defaults(cfg)
+    telegram = cfg["notifications"]["telegram"]
+    if "enabled" in data:
+        telegram["enabled"] = bool(data["enabled"])
+    if "bot_token" in data and str(data.get("bot_token") or "").strip():
+        telegram["bot_token"] = str(data.get("bot_token") or "").strip()
+    if "chat_id" in data:
+        telegram["chat_id"] = str(data.get("chat_id") or "").strip()
+    save_config(cfg)
+    record_event("Configuration", "Telegram", "Configuration changed", "Manual", "Telegram notification configuration updated")
+    return jsonify({"ok": True, "telegram": public_config(cfg)["notifications"]["telegram"]})
+
+
+@app.route("/api/notifications/telegram/test", methods=["POST"])
+def api_telegram_test():
+    cfg = load_config()
+    result = notification_service.test_connection(cfg, telegram_test_message(cfg))
+    if result.get("ok"):
+        return jsonify({"ok": True, "message": "Telegram connection successful."})
+    return jsonify({"ok": False, "error": result.get("error") or "Telegram connection failed."}), 400
 
 
 if __name__ == "__main__":

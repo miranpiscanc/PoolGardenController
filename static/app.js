@@ -5,6 +5,7 @@ let currentLanguage = 'en';
 let translations = {};
 let availableLanguages = {};
 const relayCache = {};
+const relayStatusCache = {};
 const pumpDisplayCache = { info: null, bar: null };
 
 function getPath(source, path) {
@@ -145,6 +146,22 @@ function confirmedRelay(active) {
   return active === true || active === false;
 }
 
+function relayStatusForDisplay(key, status) {
+  const current = status || {};
+  if (confirmedRelay(current.active)) {
+    relayStatusCache[key] = { ...current };
+    return current;
+  }
+  const cached = relayStatusCache[key];
+  if (!cached) return current;
+  return {
+    ...current,
+    active: cached.active,
+    response: current.response || cached.response,
+    elapsed_ms: current.elapsed_ms || cached.elapsed_ms
+  };
+}
+
 function pumpInfoText(pump, s) {
   const flags = [];
   if (s.runtime.scheduler.manual_run_until) flags.push(t('pump.manualTimerActive'));
@@ -173,7 +190,7 @@ function scheduleRefresh(s) {
   const appConfig = (s.config && s.config.app) || {};
   const safeStop = ((s.runtime || {}).heater_safe_stop) || {};
   const heaterRunning = !!((s.heater_statistics || {}).active_start);
-  const nextRefreshMs = (safeStop.running || safeStop.state === 'COMPLETED' || heaterRunning) ? 1000 : Number(appConfig.poll_seconds || 4) * 1000;
+  const nextRefreshMs = (safeStop.running || safeStop.state === 'COMPLETED' || heaterRunning) ? 1000 : Number(appConfig.poll_seconds || 30) * 1000;
   if (nextRefreshMs !== refreshMs || !refreshTimer) {
     refreshMs = nextRefreshMs;
     if (refreshTimer) clearInterval(refreshTimer);
@@ -200,7 +217,8 @@ async function refresh() {
     if (document.activeElement !== durationField) durationField.value = pump.duration_hours || 6;
     document.getElementById('mode').value = pump.mode || 'auto';
     document.getElementById('pumpMode').textContent = t(`pump.modeBadge.${pump.mode || 'auto'}`);
-    const [pl, pc] = relayLabel('pump', pump.active);
+    const pumpKey = `${pump.device}:${pump.relay}`;
+    const [pl, pc] = relayLabel(pumpKey, pump.active);
     const ps = document.getElementById('pumpState');
     ps.textContent = pl;
     ps.className = 'state ' + pc;
@@ -210,6 +228,7 @@ async function refresh() {
     document.getElementById('bar').style.width = pumpDisplayCache.bar + '%';
     renderTemperatures(s);
     renderSolarHeating(s);
+    renderTelegramNotifications(s);
     renderCards(s);
     renderDiag(s);
   } catch (e) {
@@ -311,6 +330,53 @@ function renderSolarHeating(s) {
   if (earlyConfirmation && document.activeElement !== earlyConfirmation) earlyConfirmation.value = Number(solar.early_completion_confirmation_minutes || 120);
 }
 
+function renderTelegramNotifications(s) {
+  const telegram = (((s.config || {}).notifications || {}).telegram) || {};
+  const enabled = document.getElementById('telegramEnabled');
+  if (enabled && document.activeElement !== enabled) enabled.checked = !!telegram.enabled;
+  const chatId = document.getElementById('telegramChatId');
+  if (chatId && document.activeElement !== chatId) chatId.value = telegram.chat_id || '';
+  const tokenHint = document.getElementById('telegramTokenHint');
+  if (tokenHint) {
+    tokenHint.textContent = telegram.bot_token_configured
+      ? t('telegram.tokenConfigured', { token: telegram.bot_token_masked || '••••' })
+      : t('telegram.tokenNotConfigured');
+  }
+}
+
+function toggleTelegramTokenVisibility() {
+  const token = document.getElementById('telegramBotToken');
+  if (!token) return;
+  token.type = token.type === 'password' ? 'text' : 'password';
+}
+
+async function saveTelegramConfig() {
+  const token = document.getElementById('telegramBotToken');
+  const payload = {
+    enabled: document.getElementById('telegramEnabled').checked,
+    bot_token: token.value,
+    chat_id: document.getElementById('telegramChatId').value
+  };
+  const result = await api('/api/notifications/telegram/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (token) token.value = '';
+  const status = document.getElementById('telegramStatus');
+  if (status) status.textContent = result.ok ? t('telegram.saved') : (result.error || t('telegram.saveFailed'));
+  await refresh();
+  return result;
+}
+
+async function testTelegramConnection() {
+  await saveTelegramConfig();
+  const status = document.getElementById('telegramStatus');
+  if (status) status.textContent = t('telegram.testing');
+  const result = await api('/api/notifications/telegram/test', { method: 'POST' });
+  if (status) status.textContent = result.ok ? result.message : (result.error || t('telegram.testFailed'));
+}
+
 function deviceName(devId, dev) {
   return optionalT(`devices.${devId}.name`) || dev.name;
 }
@@ -327,8 +393,9 @@ function renderCards(s) {
   for (const [devId, dev] of Object.entries(cfg.devices)) {
     for (const [relayNo, relay] of Object.entries(dev.relays)) {
       if (devId === 'pool' && relayNo === '2') continue;
-      const st = (s.relays || {})[`${devId}:${relayNo}`] || {};
-      const [label, cls] = relayLabel(`${devId}:${relayNo}`, st.active);
+      const key = `${devId}:${relayNo}`;
+      const st = relayStatusForDisplay(key, (s.relays || {})[key] || {});
+      const [label, cls] = relayLabel(key, st.active);
       const heater = isHeaterRelay(devId, relayNo, relay);
       const disabled = heater && safeStop.running ? ' disabled' : '';
       const stopButton = heater
@@ -461,6 +528,11 @@ async function resetAuto() {
   await refresh();
 }
 
+async function refreshRelays() {
+  await api('/api/relays/refresh', { method: 'POST' });
+  await refresh();
+}
+
 async function refreshCurrentPage() {
   if (document.getElementById('relayCards')) return refresh();
   if (document.getElementById('statisticsCards')) return refreshStatistics();
@@ -470,7 +542,7 @@ async function refreshCurrentPage() {
 async function startPage() {
   await loadI18n();
   await refreshCurrentPage();
-  refreshTimer = setInterval(refreshCurrentPage, refreshMs);
+  if (!refreshTimer) refreshTimer = setInterval(refreshCurrentPage, refreshMs);
 }
 
 startPage();
