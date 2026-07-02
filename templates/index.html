@@ -115,9 +115,13 @@
           <span data-i18n="solar.heatingToday"></span>
           <strong id="solarHeatingToday">0h 00m</strong>
         </div>
+        <div>
+          <span data-i18n="solar.nextTemperatureCheck"></span>
+          <strong id="solarNextTemperatureCheck">--</strong>
+        </div>
       </div>
 
-      <div class="grid three">
+      <div class="grid four">
         <label><span data-i18n="solar.waterTemperatureThreshold"></span>
           <input id="solarThreshold" type="number" min="0" max="45" step="0.1" value="29.0">
         </label>
@@ -126,6 +130,15 @@
         </label>
         <label><span data-i18n="solar.forcedStopTime"></span>
           <input id="solarStopTime" type="time" value="17:00">
+        </label>
+        <label><span data-i18n="solar.temperatureCheckInterval"></span>
+          <input id="solarTemperatureCheckInterval" type="number" min="5" max="60" step="5" value="15">
+        </label>
+        <label><span data-i18n="solar.earlyCompletionTemperature"></span>
+          <input id="solarEarlyCompletionTemperature" type="number" min="0" max="45" step="0.1" value="31.0">
+        </label>
+        <label><span data-i18n="solar.earlyCompletionConfirmation"></span>
+          <input id="solarEarlyCompletionConfirmation" type="number" min="30" max="240" step="5" value="120">
         </label>
       </div>
       <div class="row gap">

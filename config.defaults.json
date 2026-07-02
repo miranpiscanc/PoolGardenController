@@ -37,6 +37,9 @@
     "enabled": false,
     "water_temperature_threshold": 29.0,
     "start_time": "08:00",
-    "forced_stop_time": "17:00"
+    "forced_stop_time": "17:00",
+    "temperature_check_interval_seconds": 900,
+    "early_completion_temperature": 31.0,
+    "early_completion_confirmation_minutes": 120
   }
 }

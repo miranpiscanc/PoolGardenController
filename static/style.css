@@ -16,6 +16,7 @@ body{margin:0}
 .gap{gap:10px}
 .grid.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 12px}
 .grid.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 12px}
+.grid.four{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 12px}
 .pump-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.85fr);gap:18px;align-items:start}
 .pump-temperature-card{background:#f6f9fb;border:1px solid #edf1f4;border-radius:18px;padding:16px}
 .pump-temperature-card .temperature-grid{grid-template-columns:1fr}

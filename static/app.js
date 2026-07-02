@@ -293,12 +293,22 @@ function renderSolarHeating(s) {
   if (operating) operating.textContent = `${solar.operating_start_time || solar.start_time || '08:00'} → ${solar.operating_stop_time || solar.forced_stop_time || '17:00'}`;
   const heatingToday = document.getElementById('solarHeatingToday');
   if (heatingToday) heatingToday.textContent = fmtSec((s.heater_statistics || {}).daily_seconds);
+  const nextTemperatureCheck = document.getElementById('solarNextTemperatureCheck');
+  if (nextTemperatureCheck) nextTemperatureCheck.textContent = fmtTime((solar.runtime || {}).next_temperature_check_at).slice(0, 5);
   const threshold = document.getElementById('solarThreshold');
   if (threshold && document.activeElement !== threshold) threshold.value = Number(solar.water_temperature_threshold || 29).toFixed(1);
   const start = document.getElementById('solarStartTime');
   if (start && document.activeElement !== start) start.value = solar.start_time || '08:00';
   const stop = document.getElementById('solarStopTime');
   if (stop && document.activeElement !== stop) stop.value = solar.forced_stop_time || '17:00';
+  const interval = document.getElementById('solarTemperatureCheckInterval');
+  if (interval && document.activeElement !== interval) {
+    interval.value = Math.max(5, Math.min(60, Math.round(Number(solar.temperature_check_interval_seconds || 900) / 60)));
+  }
+  const earlyTemperature = document.getElementById('solarEarlyCompletionTemperature');
+  if (earlyTemperature && document.activeElement !== earlyTemperature) earlyTemperature.value = Number(solar.early_completion_temperature || 31).toFixed(1);
+  const earlyConfirmation = document.getElementById('solarEarlyCompletionConfirmation');
+  if (earlyConfirmation && document.activeElement !== earlyConfirmation) earlyConfirmation.value = Number(solar.early_completion_confirmation_minutes || 120);
 }
 
 function deviceName(devId, dev) {
@@ -432,6 +442,9 @@ async function saveSolarHeatingConfig(extra = {}) {
     water_temperature_threshold: parseFloat(document.getElementById('solarThreshold').value),
     start_time: document.getElementById('solarStartTime').value,
     forced_stop_time: document.getElementById('solarStopTime').value,
+    temperature_check_interval_seconds: Math.max(5, Math.min(60, Math.round(parseFloat(document.getElementById('solarTemperatureCheckInterval').value || '15') / 5) * 5)) * 60,
+    early_completion_temperature: parseFloat(document.getElementById('solarEarlyCompletionTemperature').value),
+    early_completion_confirmation_minutes: Math.max(30, Math.min(240, Math.round(parseFloat(document.getElementById('solarEarlyCompletionConfirmation').value || '120')))),
     ...extra
   };
   await api('/api/solar_heating/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });

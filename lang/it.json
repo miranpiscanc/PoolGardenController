@@ -72,9 +72,13 @@
     "configuredThreshold": "Soglia configurata",
     "operatingTime": "Orario operativo",
     "heatingToday": "Riscaldamento oggi",
+    "nextTemperatureCheck": "Prossimo controllo temperatura",
     "waterTemperatureThreshold": "Soglia temperatura acqua",
     "startTime": "Ora di avvio",
     "forcedStopTime": "Ora arresto forzato",
+    "temperatureCheckInterval": "Intervallo controllo temperatura (minuti)",
+    "earlyCompletionTemperature": "Temperatura completamento anticipato",
+    "earlyCompletionConfirmation": "Tempo conferma (minuti)",
     "saveAutomation": "Salva automazione solare",
     "enable": "Attiva",
     "disable": "Disattiva",
@@ -90,7 +94,13 @@
       "safeStopRunning": "Arresto sicuro in corso...",
       "safeStopScheduled": "Arresto sicuro programmato",
       "temperatureOk": "Temperatura OK\n(acqua già sopra la soglia configurata)",
-      "checkingWaterTemperature": "Controllo temperatura acqua..."
+      "checkingWaterTemperature": "Controllo temperatura acqua...",
+      "nextTemperatureCheck": "Prossimo controllo temperatura alle {time}",
+      "waitingForNextCheck": "In attesa del prossimo controllo temperatura ({time})",
+      "heatingAlreadyRunning": "Riscaldamento già in funzione",
+      "maintainingTarget": "Mantenimento temperatura obiettivo...",
+      "earlyCompletionTimer": "Timer completamento anticipato:\n{minutes} min rimanenti",
+      "completedEarly": "Automazione completata in anticipo"
     },
     "messageMap": {
       "Automation disabled": "Automazione disabilitata",
@@ -98,7 +108,11 @@
       "Safe Stop running...": "Arresto sicuro in corso...",
       "Safe Stop scheduled": "Arresto sicuro programmato",
       "Temperature OK\n(Water already above configured threshold)": "Temperatura OK\n(acqua già sopra la soglia configurata)",
-      "Checking water temperature...": "Controllo temperatura acqua..."
+      "Checking water temperature...": "Controllo temperatura acqua...",
+      "Next temperature check at {time}": "Prossimo controllo temperatura alle {time}",
+      "Heating already running": "Riscaldamento già in funzione",
+      "Maintaining target temperature...": "Mantenimento temperatura obiettivo...",
+      "Automation completed early": "Automazione completata in anticipo"
     }
   },
   "relay": {

@@ -42,7 +42,12 @@ _runtime: Dict[str, Any] = {
         "last_start_date": None,
         "auto_started_date": None,
         "safe_stop_started_date": None,
-        "safe_stop_completed_date": None
+        "safe_stop_completed_date": None,
+        "last_temperature_check_at": None,
+        "next_temperature_check_at": None,
+        "early_completion_started_at": None,
+        "early_completion_target_temperature": None,
+        "early_completion_completed_date": None
     },
     "heater_safe_stop": {
         "state": "IDLE",
@@ -144,7 +149,10 @@ def ensure_config_defaults(cfg):
         "enabled": False,
         "water_temperature_threshold": 29.0,
         "start_time": "08:00",
-        "forced_stop_time": "17:00"
+        "forced_stop_time": "17:00",
+        "temperature_check_interval_seconds": 900,
+        "early_completion_temperature": 31.0,
+        "early_completion_confirmation_minutes": 120
     }
     for key, value in defaults.items():
         if key not in solar:
@@ -956,13 +964,122 @@ def solar_heating_window(cfg):
     )
 
 
+def parse_iso_datetime(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def solar_temperature_check_interval_seconds(solar):
+    try:
+        seconds = int(float(solar.get("temperature_check_interval_seconds", 900)))
+    except (TypeError, ValueError):
+        seconds = 900
+    return min(3600, max(300, seconds))
+
+
+def early_completion_temperature(solar):
+    try:
+        return float(solar.get("early_completion_temperature", 31.0))
+    except (TypeError, ValueError):
+        return 31.0
+
+
+def early_completion_confirmation_minutes(solar):
+    try:
+        minutes = int(float(solar.get("early_completion_confirmation_minutes", 120)))
+    except (TypeError, ValueError):
+        minutes = 120
+    return min(240, max(30, minutes))
+
+
+def set_solar_next_temperature_check(state, value):
+    state["next_temperature_check_at"] = value.isoformat(timespec="seconds") if value else None
+
+
+def reset_early_completion_timer(state):
+    state["early_completion_started_at"] = None
+    state["early_completion_target_temperature"] = None
+
+
+def early_completion_snapshot(solar, runtime):
+    started_at = parse_iso_datetime(runtime.get("early_completion_started_at"))
+    target = runtime.get("early_completion_target_temperature")
+    if not started_at:
+        return {
+            "active": False,
+            "started_at": None,
+            "target_temperature": target,
+            "remaining_seconds": 0
+        }
+    confirmation = timedelta(minutes=early_completion_confirmation_minutes(solar))
+    remaining = max(0, int(((started_at + confirmation) - now()).total_seconds()))
+    return {
+        "active": True,
+        "started_at": started_at.isoformat(timespec="seconds"),
+        "target_temperature": target,
+        "remaining_seconds": remaining
+    }
+
+
+def reconcile_solar_temperature_schedule(cfg, force_due=False):
+    solar = solar_heating_config(cfg)
+    current = now()
+    today = date.today().isoformat()
+    start, stop = solar_heating_window(cfg)
+    interval = timedelta(seconds=solar_temperature_check_interval_seconds(solar))
+    state = _runtime["solar_heating"]
+
+    if (
+        not solar.get("enabled")
+        or state.get("safe_stop_started_date") == today
+        or state.get("safe_stop_completed_date") == today
+        or state.get("early_completion_completed_date") == today
+        or current >= stop
+    ):
+        set_solar_next_temperature_check(state, None)
+        return None
+
+    if current < start:
+        set_solar_next_temperature_check(state, start)
+        return start
+
+    last_check = parse_iso_datetime(state.get("last_temperature_check_at"))
+    if force_due or not last_check or last_check.date() != current.date():
+        next_check = current
+    else:
+        next_check = last_check + interval
+        if next_check < current:
+            next_check = current
+
+    if next_check >= stop:
+        set_solar_next_temperature_check(state, None)
+        return None
+    set_solar_next_temperature_check(state, next_check)
+    return next_check
+
+
+def schedule_solar_temperature_recheck(cfg, checked_at):
+    solar = solar_heating_config(cfg)
+    _, stop = solar_heating_window(cfg)
+    state = _runtime["solar_heating"]
+    next_check = checked_at + timedelta(seconds=solar_temperature_check_interval_seconds(solar))
+    set_solar_next_temperature_check(state, next_check if next_check < stop else None)
+
+
 def solar_heating_snapshot(cfg=None):
     if cfg is None:
         cfg = load_config()
     solar = dict(solar_heating_config(cfg))
     start, stop = solar_heating_window(cfg)
     with _lock:
+        reconcile_solar_temperature_schedule(cfg)
+    with _lock:
         runtime = dict(_runtime["solar_heating"])
+    runtime["early_completion"] = early_completion_snapshot(solar, runtime)
     water_temperature = water_temperature_snapshot()
     enabled = bool(solar.get("enabled"))
     status_label = "ACTIVE" if enabled else "DISABLED"
@@ -977,7 +1094,7 @@ def solar_heating_snapshot(cfg=None):
         "water_temperature": water_temperature,
         "operating_start_time": start.strftime("%H:%M"),
         "operating_stop_time": stop.strftime("%H:%M"),
-        "safe_stop_time": (stop - timedelta(minutes=2)).strftime("%H:%M"),
+        "safe_stop_time": stop.strftime("%H:%M"),
         "runtime": runtime
     }
 
@@ -995,28 +1112,33 @@ def solar_heating_status_details(solar, runtime, start, stop):
     safe_stop = safe_stop_snapshot()
 
     if runtime.get("safe_stop_completed_date") == today:
+        if runtime.get("early_completion_completed_date") == today:
+            return {"key": "solar.message.completedEarly", "vars": {}, "message": "Automation completed early"}
         return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
     if runtime.get("safe_stop_started_date") == today:
         if safe_stop.get("running"):
             return {"key": "solar.message.safeStopRunning", "vars": {}, "message": "Safe Stop running..."}
         return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
+    early = runtime.get("early_completion", {})
+    if early.get("active"):
+        minutes = int((early.get("remaining_seconds", 0) + 59) / 60)
+        if minutes > 0:
+            return {
+                "key": "solar.message.earlyCompletionTimer",
+                "vars": {"minutes": minutes},
+                "message": f"Early completion timer:\n{minutes} min remaining"
+            }
+        return {"key": "solar.message.maintainingTarget", "vars": {}, "message": "Maintaining target temperature..."}
     if runtime.get("auto_started_date") == today:
-        if current < start + timedelta(minutes=5):
+        next_check = runtime.get("next_temperature_check_at")
+        parsed_next_check = parse_iso_datetime(next_check)
+        if parsed_next_check and current < parsed_next_check:
             return {
-                "key": "solar.message.heatingStartedAt",
-                "vars": {"time": start.strftime("%H:%M")},
-                "message": f"Heating started automatically at {start.strftime('%H:%M')}"
+                "key": "solar.message.waitingForNextCheck",
+                "vars": {"time": fmt_time_iso(next_check)},
+                "message": f"Waiting for next temperature check ({fmt_time_iso(next_check)})"
             }
-        return {"key": "solar.message.safeStopScheduled", "vars": {}, "message": "Safe Stop scheduled"}
-    if runtime.get("last_start_date") == today:
-        recent_event = latest_solar_heating_event(today)
-        if recent_event and "Water already" in recent_event.get("event", ""):
-            return {
-                "key": "solar.message.temperatureOk",
-                "vars": {},
-                "message": "Temperature OK\n(Water already above configured threshold)"
-            }
-        return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
+        return {"key": "solar.message.heatingAlreadyRunning", "vars": {}, "message": "Heating already running"}
     if current < start:
         return {
             "key": "solar.message.waitingForStart",
@@ -1025,7 +1147,22 @@ def solar_heating_status_details(solar, runtime, start, stop):
         }
     if current >= stop:
         return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
+    next_check = runtime.get("next_temperature_check_at")
+    parsed_next_check = parse_iso_datetime(next_check)
+    if parsed_next_check and current < parsed_next_check:
+        return {
+            "key": "solar.message.waitingForNextCheck",
+            "vars": {"time": fmt_time_iso(next_check)},
+            "message": f"Waiting for next temperature check ({fmt_time_iso(next_check)})"
+        }
     return {"key": "solar.message.checkingWaterTemperature", "vars": {}, "message": "Checking water temperature..."}
+
+
+def fmt_time_iso(value):
+    parsed = parse_iso_datetime(value)
+    if parsed:
+        return parsed.strftime("%H:%M")
+    return str(value or "-")
 
 
 def latest_solar_heating_event(today):
@@ -1051,8 +1188,10 @@ def monitor_solar_safe_stop_completion(target_date):
                     state = _runtime["solar_heating"]
                     if state.get("safe_stop_completed_date") != target_date:
                         state["safe_stop_completed_date"] = target_date
+                        reset_early_completion_timer(state)
                         save_state()
-                        record_solar_event("Automatic Safe Stop completed")
+                        event = "Automation completed early" if state.get("early_completion_completed_date") == target_date else "Automatic Safe Stop completed"
+                        record_solar_event(event)
             return
         time.sleep(1)
 
@@ -1069,6 +1208,46 @@ def start_solar_safe_stop_monitor(target_date):
     _solar_safe_stop_monitor_thread.start()
 
 
+def relay_active_from_runtime(device_id, relay_number):
+    return _runtime.get("relays", {}).get(f"{device_id}:{relay_number}", {}).get("active")
+
+
+def complete_solar_for_today(state, today, event, reason=""):
+    state["safe_stop_completed_date"] = today
+    set_solar_next_temperature_check(state, None)
+    reset_early_completion_timer(state)
+    save_state()
+    record_solar_event(event, reason)
+
+
+def start_solar_safe_stop(state, today, event, source, early=False):
+    state["safe_stop_started_date"] = today
+    if early:
+        state["early_completion_completed_date"] = today
+    set_solar_next_temperature_check(state, None)
+    save_state()
+    record_solar_event(event)
+    start_heater_safe_stop(source=source)
+    start_solar_safe_stop_monitor(today)
+
+
+def update_early_completion_timer(solar, state, water_temperature, checked_at):
+    target = early_completion_temperature(solar)
+    if water_temperature < target:
+        reset_early_completion_timer(state)
+        return False
+
+    started_at = parse_iso_datetime(state.get("early_completion_started_at"))
+    saved_target = state.get("early_completion_target_temperature")
+    if not started_at or saved_target != target:
+        started_at = checked_at
+        state["early_completion_started_at"] = started_at.isoformat(timespec="seconds")
+        state["early_completion_target_temperature"] = target
+
+    confirmation = timedelta(minutes=early_completion_confirmation_minutes(solar))
+    return checked_at >= started_at + confirmation
+
+
 def solar_heating_tick():
     cfg = load_config()
     solar = solar_heating_config(cfg)
@@ -1076,67 +1255,110 @@ def solar_heating_tick():
     state = _runtime["solar_heating"]
 
     if not solar.get("enabled"):
+        set_solar_next_temperature_check(state, None)
+        reset_early_completion_timer(state)
         return
 
     current = now()
     start, stop = solar_heating_window(cfg)
-    safe_stop_at = stop - timedelta(minutes=2)
+    pump_dev, pump_no = pump_relay(cfg)
+    heater_dev, heater_no = heater_relay(cfg)
 
-    if state.get("auto_started_date") == today:
+    if state.get("safe_stop_started_date") == today:
         safe_stop = safe_stop_snapshot()
         if (
-            state.get("safe_stop_started_date") == today
-            and state.get("safe_stop_completed_date") != today
+            state.get("safe_stop_completed_date") != today
             and safe_stop.get("state") == "COMPLETED"
             and not safe_stop.get("running")
         ):
             state["safe_stop_completed_date"] = today
+            reset_early_completion_timer(state)
             save_state()
-            record_solar_event("Automatic Safe Stop completed")
-
-        if current >= safe_stop_at and state.get("safe_stop_started_date") != today:
-            state["safe_stop_started_date"] = today
-            save_state()
-            record_solar_event("Automatic Safe Stop started")
-            start_heater_safe_stop(source="solar_heating_safe_stop")
-            start_solar_safe_stop_monitor(today)
+            event = "Automation completed early" if state.get("early_completion_completed_date") == today else "Automatic Safe Stop completed"
+            record_solar_event(event)
         return
 
-    if current < start or current >= stop or state.get("last_start_date") == today:
+    if state.get("safe_stop_completed_date") == today or state.get("early_completion_completed_date") == today:
+        set_solar_next_temperature_check(state, None)
         return
 
-    state["last_start_date"] = today
+    if current < start:
+        reconcile_solar_temperature_schedule(cfg)
+        return
+
+    if current >= stop:
+        heater_active = relay_active_from_runtime(heater_dev, heater_no)
+        if heater_active is True:
+            start_solar_safe_stop(
+                state,
+                today,
+                "Automatic Safe Stop started",
+                "solar_heating_scheduled_stop"
+            )
+        else:
+            complete_solar_for_today(state, today, "Automation completed for today", "Stop time reached")
+        return
+
+    next_check = reconcile_solar_temperature_schedule(cfg)
+    if not next_check or current < next_check:
+        return
+
+    checked_at = current
+    state["last_temperature_check_at"] = checked_at.isoformat(timespec="seconds")
+    set_solar_next_temperature_check(state, None)
     water_temperature = water_temperature_snapshot()
     if water_temperature is None:
+        reset_early_completion_timer(state)
+        schedule_solar_temperature_recheck(cfg, checked_at)
         save_state()
         record_solar_event("Automatic heating skipped", "Water temperature unavailable")
         return
 
-    threshold = float(solar.get("water_temperature_threshold", 29.0))
-    if water_temperature > threshold:
-        save_state()
-        record_solar_event(
-            f"Automatic heating skipped (Water already {water_temperature:.1f}°C)"
+    if update_early_completion_timer(solar, state, water_temperature, checked_at):
+        start_solar_safe_stop(
+            state,
+            today,
+            "Early completion Safe Stop started",
+            "solar_heating_early_completion",
+            early=True
         )
         return
 
-    pump_dev, pump_no = pump_relay(cfg)
-    heater_dev, heater_no = heater_relay(cfg)
-    pump_status = set_one_raw(cfg, pump_dev, pump_no, True, source="solar_heating")
-    if not relay_set_confirmed(pump_status, True):
+    threshold = float(solar.get("water_temperature_threshold", 29.0))
+    if water_temperature >= threshold:
+        schedule_solar_temperature_recheck(cfg, checked_at)
         save_state()
-        record_solar_event("Automatic heating skipped", "Pump start was not confirmed")
+        record_solar_event(f"Temperature OK (Water {water_temperature:.1f}°C)")
         return
-    heater_status = set_one_raw(cfg, heater_dev, heater_no, True, source="solar_heating")
-    if not relay_set_confirmed(heater_status, True):
-        save_state()
-        record_solar_event("Automatic heating skipped", "Heater start was not confirmed")
-        return
+
+    pump_active = relay_active_from_runtime(pump_dev, pump_no)
+    heater_active = relay_active_from_runtime(heater_dev, heater_no)
+    started_any = False
+    if pump_active is not True:
+        pump_status = set_one_raw(cfg, pump_dev, pump_no, True, source="solar_heating")
+        if not relay_set_confirmed(pump_status, True):
+            schedule_solar_temperature_recheck(cfg, checked_at)
+            save_state()
+            record_solar_event("Automatic heating skipped", "Pump start was not confirmed")
+            return
+        started_any = True
+    if heater_active is not True:
+        heater_status = set_one_raw(cfg, heater_dev, heater_no, True, source="solar_heating")
+        if not relay_set_confirmed(heater_status, True):
+            schedule_solar_temperature_recheck(cfg, checked_at)
+            save_state()
+            record_solar_event("Automatic heating skipped", "Heater start was not confirmed")
+            return
+        started_any = True
     state["auto_started_date"] = today
     state["safe_stop_started_date"] = None
     state["safe_stop_completed_date"] = None
+    schedule_solar_temperature_recheck(cfg, checked_at)
     save_state()
-    record_solar_event(f"Automatic heating started (Water {water_temperature:.1f}°C)")
+    if started_any:
+        record_solar_event(f"Automatic heating started (Water {water_temperature:.1f}°C)")
+    else:
+        record_solar_event(f"Heating already running (Water {water_temperature:.1f}°C)")
 
 
 def scheduler_tick():
@@ -1427,9 +1649,42 @@ def api_solar_heating_config():
         if not valid_hhmm(data["forced_stop_time"]):
             return jsonify({"ok": False, "error": "Invalid forced_stop_time"}), 400
         solar["forced_stop_time"] = data["forced_stop_time"]
+    if "temperature_check_interval_seconds" in data:
+        try:
+            interval_seconds = int(float(data["temperature_check_interval_seconds"]))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid temperature_check_interval_seconds"}), 400
+        if interval_seconds < 300 or interval_seconds > 3600 or interval_seconds % 300 != 0:
+            return jsonify({"ok": False, "error": "Invalid temperature_check_interval_seconds"}), 400
+        solar["temperature_check_interval_seconds"] = interval_seconds
+    if "early_completion_temperature" in data:
+        try:
+            solar["early_completion_temperature"] = float(data["early_completion_temperature"])
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid early_completion_temperature"}), 400
+    if "early_completion_confirmation_minutes" in data:
+        try:
+            confirmation_minutes = int(float(data["early_completion_confirmation_minutes"]))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid early_completion_confirmation_minutes"}), 400
+        if confirmation_minutes < 30 or confirmation_minutes > 240:
+            return jsonify({"ok": False, "error": "Invalid early_completion_confirmation_minutes"}), 400
+        solar["early_completion_confirmation_minutes"] = confirmation_minutes
 
     save_config(cfg)
     is_enabled = bool(solar.get("enabled"))
+    if is_enabled:
+        with _lock:
+            _runtime["solar_heating"]["last_temperature_check_at"] = None
+            reset_early_completion_timer(_runtime["solar_heating"])
+            reconcile_solar_temperature_schedule(cfg, force_due=True)
+            save_state()
+        solar_heating_tick()
+    else:
+        with _lock:
+            set_solar_next_temperature_check(_runtime["solar_heating"], None)
+            reset_early_completion_timer(_runtime["solar_heating"])
+            save_state()
     if is_enabled != was_enabled:
         record_solar_event("Solar Heating enabled" if is_enabled else "Solar Heating disabled")
     else:

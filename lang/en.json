@@ -72,9 +72,13 @@
     "configuredThreshold": "Configured threshold",
     "operatingTime": "Operating time",
     "heatingToday": "Heating today",
+    "nextTemperatureCheck": "Next temperature check",
     "waterTemperatureThreshold": "Water temperature threshold",
     "startTime": "Start time",
     "forcedStopTime": "Forced stop time",
+    "temperatureCheckInterval": "Temperature check interval (minutes)",
+    "earlyCompletionTemperature": "Early completion temperature",
+    "earlyCompletionConfirmation": "Confirmation time (minutes)",
     "saveAutomation": "Save solar automation",
     "enable": "Enable",
     "disable": "Disable",
@@ -90,7 +94,13 @@
       "safeStopRunning": "Safe Stop running...",
       "safeStopScheduled": "Safe Stop scheduled",
       "temperatureOk": "Temperature OK\n(Water already above configured threshold)",
-      "checkingWaterTemperature": "Checking water temperature..."
+      "checkingWaterTemperature": "Checking water temperature...",
+      "nextTemperatureCheck": "Next temperature check at {time}",
+      "waitingForNextCheck": "Waiting for next temperature check ({time})",
+      "heatingAlreadyRunning": "Heating already running",
+      "maintainingTarget": "Maintaining target temperature...",
+      "earlyCompletionTimer": "Early completion timer:\n{minutes} min remaining",
+      "completedEarly": "Automation completed early"
     },
     "messageMap": {
       "Automation disabled": "Automation disabled",
@@ -98,7 +108,11 @@
       "Safe Stop running...": "Safe Stop running...",
       "Safe Stop scheduled": "Safe Stop scheduled",
       "Temperature OK\n(Water already above configured threshold)": "Temperature OK\n(Water already above configured threshold)",
-      "Checking water temperature...": "Checking water temperature..."
+      "Checking water temperature...": "Checking water temperature...",
+      "Next temperature check at {time}": "Next temperature check at {time}",
+      "Heating already running": "Heating already running",
+      "Maintaining target temperature...": "Maintaining target temperature...",
+      "Automation completed early": "Automation completed early"
     }
   },
   "relay": {
