@@ -728,6 +728,8 @@ def relay_diagnostic_message(cfg, device_id=None, relay_number=None, operation="
 
 
 def notify_communication_error(cfg, device_id=None, relay_number=None, operation="READ", status=None):
+    if (operation or "").upper() == "READ":
+        return None
     send_notification(
         relay_diagnostic_message(cfg, device_id, relay_number, operation, status),
         cfg
