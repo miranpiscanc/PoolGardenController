@@ -115,6 +115,36 @@ function fmtTime(value) {
   return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function numericValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function fmtPower(value) {
+  const number = numericValue(value);
+  if (number === null) return '--';
+  const sign = number < 0 ? '−' : '';
+  const absolute = Math.abs(number);
+  if (absolute < 1000) return sign + Math.round(absolute) + ' W';
+  return sign + (absolute / 1000).toFixed(2) + ' kW';
+}
+
+function fmtPercent(value) {
+  const number = numericValue(value);
+  return number === null ? '--' : Math.round(number) + ' %';
+}
+
+function fmtCelsius(value) {
+  const number = numericValue(value);
+  return number === null ? '--' : number.toFixed(1) + ' °C';
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
 function setLastRefresh(value) {
   const el = document.getElementById('lastRefresh');
   if (el) el.textContent = fmtDateTime(value);
@@ -228,6 +258,7 @@ async function refresh() {
     document.getElementById('bar').style.width = pumpDisplayCache.bar + '%';
     renderTemperatures(s);
     renderSolarHeating(s);
+    renderGoodWeDashboard(s);
     renderTelegramNotifications(s);
     renderCards(s);
     renderDiag(s);
@@ -328,6 +359,25 @@ function renderSolarHeating(s) {
   if (earlyTemperature && document.activeElement !== earlyTemperature) earlyTemperature.value = Number(solar.early_completion_temperature || 31).toFixed(1);
   const earlyConfirmation = document.getElementById('solarEarlyCompletionConfirmation');
   if (earlyConfirmation && document.activeElement !== earlyConfirmation) earlyConfirmation.value = Number(solar.early_completion_confirmation_minutes || 120);
+}
+
+function renderGoodWeDashboard(s) {
+  const goodwe = s.goodwe || {};
+  const pvProduction = numericValue(goodwe.pv_production);
+  const houseConsumption = numericValue(goodwe.house_consumption);
+  const availableSurplus = pvProduction === null || houseConsumption === null
+    ? null
+    : Math.max(0, pvProduction - houseConsumption);
+
+  setText('goodweHouseConsumption', fmtPower(goodwe.house_consumption));
+  setText('goodweNormalLoads', fmtPower(goodwe.normal_loads));
+  setText('goodweBackupLoads', fmtPower(goodwe.backup_loads));
+  setText('goodwePvProduction', fmtPower(goodwe.pv_production));
+  setText('goodweManagerHouse', fmtPower(goodwe.house_consumption));
+  setText('goodweBatterySoc', fmtPercent(goodwe.battery_soc));
+  setText('goodweGridPower', fmtPower(goodwe.grid_power));
+  setText('goodweAvailableSurplus', fmtPower(availableSurplus));
+  setText('goodweTemperature', fmtCelsius(goodwe.temperature));
 }
 
 function renderTelegramNotifications(s) {

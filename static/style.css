@@ -58,6 +58,19 @@ button.secondary{background:#f6f6f6;color:#333}
 .solar-summary div{background:#fffaf0;border-radius:12px;padding:10px}
 .solar-summary span{display:block;color:#5b6870;font-size:13px}
 .solar-summary strong{display:block;font-size:20px;margin-top:3px}
+.energy-dashboard{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch}
+.energy-card{margin-bottom:16px}
+.energy-card h2{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.energy-icon{font-size:28px;line-height:1}
+.energy-main-value{font-size:42px;font-weight:850;line-height:1.1;margin:8px 0 6px}
+.energy-divider{height:1px;background:#edf1f4;margin:18px 0}
+.energy-loads,.energy-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.energy-loads div,.energy-metrics div{background:#f6f9fb;border-radius:12px;padding:10px}
+.energy-loads span,.energy-metrics span,.energy-surplus span{display:block;color:#5b6870;font-size:13px}
+.energy-loads strong,.energy-metrics strong{display:block;font-size:22px;margin-top:4px}
+.energy-surplus strong{display:block;font-size:34px;line-height:1.1;margin-top:4px}
+.smart-loads{margin-top:14px;font-weight:800;color:#137034}
+.energy-temperature-card{grid-column:1 / -1}
 .diag{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;font-size:14px}
 .relay-title{display:flex;gap:10px;align-items:center}
 .relay-title .icon{font-size:26px}
@@ -78,5 +91,8 @@ button.secondary{background:#f6f6f6;color:#333}
   .card{border-radius:18px}
   .pump-layout{grid-template-columns:1fr}
   .temperature-grid{grid-template-columns:1fr}
+  .energy-dashboard{grid-template-columns:1fr}
+  .energy-loads,.energy-metrics{grid-template-columns:1fr}
+  .energy-main-value{font-size:36px}
   .event-row{grid-template-columns:1fr}
 }

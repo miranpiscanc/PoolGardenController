@@ -157,6 +157,24 @@ def public_config(cfg):
     return public
 
 
+GOODWE_STATUS_FIELDS = (
+    "pv_production",
+    "house_consumption",
+    "normal_loads",
+    "backup_loads",
+    "battery_soc",
+    "grid_power",
+    "temperature"
+)
+
+
+def goodwe_status_snapshot():
+    cached = _runtime.get("goodwe")
+    if not isinstance(cached, dict):
+        return {}
+    return {field: cached.get(field) for field in GOODWE_STATUS_FIELDS if field in cached}
+
+
 def ensure_config_defaults(cfg):
     changed = False
     app_cfg = cfg.get("app")
@@ -527,9 +545,6 @@ def sync_device_statistics(cfg, device_id, relay_number, active, source="poll", 
                     source_label(source),
                     reason or event_reason(source, True)
                 )
-                pump_dev, pump_no = pump_relay(cfg)
-                if same_relay(device_id, relay_number, pump_dev, pump_no) and source != "poll":
-                    notify_pump_started(cfg)
         elif active is False and active_start:
             try:
                 add_runtime(relay_stats, datetime.fromisoformat(active_start), current)
@@ -623,6 +638,17 @@ def notification_time():
     return now().strftime("%H:%M")
 
 
+def notification_action_suffix(source):
+    source = source or ""
+    if "safe_stop" in source or "interlock" in source:
+        return " by Safe Stop"
+    if source == "manual_timer" or source == "manual" or source.startswith("manual_"):
+        return " manually"
+    if source == "scheduler" or source == "solar_heating" or source.startswith("solar_heating_"):
+        return " automatically"
+    return ""
+
+
 def send_notification(message, cfg=None):
     if cfg is None:
         cfg = load_config()
@@ -639,10 +665,28 @@ def telegram_test_message(cfg):
     )
 
 
-def notify_pump_started(cfg):
+def notify_pump_started(cfg, source=None):
     send_notification(
         "💧 PoolGardenController\n\n"
-        "Pump started.\n\n"
+        f"Pump started{notification_action_suffix(source)}.\n\n"
+        f"Time:\n{notification_time()}",
+        cfg
+    )
+
+
+def notify_pump_stopped(cfg, source=None):
+    send_notification(
+        "💧 PoolGardenController\n\n"
+        f"Pump stopped{notification_action_suffix(source)}.\n\n"
+        f"Time:\n{notification_time()}",
+        cfg
+    )
+
+
+def notify_heater_started(cfg, source=None):
+    send_notification(
+        "🔥 PoolGardenController\n\n"
+        f"Heater started{notification_action_suffix(source)}.\n\n"
         f"Time:\n{notification_time()}",
         cfg
     )
@@ -655,6 +699,15 @@ def notify_heater_started_automatically(cfg, water_temperature, threshold):
         "Heater started automatically.\n\n"
         f"Water temperature:\n{water_temperature:.1f} °C\n\n"
         f"Threshold:\n{threshold:.1f} °C\n\n"
+        f"Time:\n{notification_time()}",
+        cfg
+    )
+
+
+def notify_heater_stopped(cfg, source=None):
+    send_notification(
+        "🔥 PoolGardenController\n\n"
+        f"Heater stopped{notification_action_suffix(source)}.\n\n"
         f"Time:\n{notification_time()}",
         cfg
     )
@@ -677,6 +730,19 @@ def notify_safe_stop_completed(cfg):
         "Pump stopped.",
         cfg
     )
+
+
+def notify_automation_started(cfg, water_temperature=None, threshold=None):
+    parts = [
+        "☀ PoolGardenController",
+        "Solar Heating Automation started."
+    ]
+    if water_temperature is not None:
+        parts.append(f"Water temperature:\n{water_temperature:.1f} °C")
+    if threshold is not None:
+        parts.append(f"Threshold:\n{threshold:.1f} °C")
+    parts.append(f"Time:\n{notification_time()}")
+    send_notification("\n\n".join(parts), cfg)
 
 
 def notify_automation_completed(cfg, early=False):
@@ -734,6 +800,23 @@ def notify_communication_error(cfg, device_id=None, relay_number=None, operation
         relay_diagnostic_message(cfg, device_id, relay_number, operation, status),
         cfg
     )
+
+
+def notify_relay_state_changed(cfg, device_id, relay_number, active, source="manual"):
+    if source in ("poll", "startup", "manual_refresh"):
+        return
+    pump_dev, pump_no = pump_relay(cfg)
+    heater_dev, heater_no = heater_relay(cfg)
+    if same_relay(device_id, relay_number, pump_dev, pump_no):
+        if active:
+            notify_pump_started(cfg, source)
+        else:
+            notify_pump_stopped(cfg, source)
+    elif same_relay(device_id, relay_number, heater_dev, heater_no):
+        if active:
+            notify_heater_started(cfg, source)
+        else:
+            notify_heater_stopped(cfg, source)
 
 
 def client_for(cfg, device_id):
@@ -855,6 +938,8 @@ def read_and_cache_one(cfg, device_id, relay_number, source="operation", notify_
 def set_one_raw(cfg, device_id, relay_number, active: bool, source="manual"):
     c = client_for(cfg, device_id)
     action = "ON" if active else "OFF"
+    previous_status = cached_relay_status(device_id, relay_number)
+    previous_active = previous_status.get("active")
     res = c.set_relay(relay_number, active)
     if res.ok:
         time.sleep(2)
@@ -904,6 +989,18 @@ def set_one_raw(cfg, device_id, relay_number, active: bool, source="manual"):
             "time": now().isoformat(timespec="seconds")
         }
     log(f"{source.upper()} {device_id}.{relay_number} {action} | cmd_ok={res.ok} cmd_resp={res.response!r} | stato={status.get('active')} resp={status.get('response')!r} err={res.error or status.get('error','')}")
+    notification_ok = bool(
+        status.get("command_ok")
+        and previous_active is not active
+        and (
+            status.get("active") is active
+            or status.get("active") is None
+            or status.get("state_preserved")
+            or status.get("incomplete")
+        )
+    )
+    if notification_ok:
+        notify_relay_state_changed(cfg, device_id, relay_number, active, source=source)
     return status
 
 
@@ -1733,7 +1830,6 @@ def solar_heating_tick():
     pump_active = relay_active_from_runtime(pump_dev, pump_no)
     heater_active = relay_active_from_runtime(heater_dev, heater_no)
     started_any = False
-    heater_started = False
     if pump_active is not True:
         pump_status = set_one_raw(cfg, pump_dev, pump_no, True, source="solar_heating")
         if not relay_set_confirmed(pump_status, True):
@@ -1750,7 +1846,6 @@ def solar_heating_tick():
             record_solar_event("Automatic heating skipped", "Heater start was not confirmed")
             return
         started_any = True
-        heater_started = True
     state["auto_started_date"] = today
     state["safe_stop_started_date"] = None
     state["safe_stop_completed_date"] = None
@@ -1758,8 +1853,7 @@ def solar_heating_tick():
     save_state()
     if started_any:
         record_solar_event(f"Automatic heating started (Water {water_temperature:.1f}°C)")
-        if heater_started:
-            notify_heater_started_automatically(cfg, water_temperature, threshold)
+        notify_automation_started(cfg, water_temperature, threshold)
     else:
         record_solar_event(f"Heating already running (Water {water_temperature:.1f}°C)")
 
@@ -1927,6 +2021,7 @@ def api_status():
             "devices": _runtime["devices"],
             "relays": _runtime["relays"],
             "temperatures": temperature_service.snapshot() if temperature_service else {},
+            "goodwe": goodwe_status_snapshot(),
             "heater_statistics": heater_statistics_snapshot(),
             "statistics": statistics_snapshot(cfg),
             "pump": pump,

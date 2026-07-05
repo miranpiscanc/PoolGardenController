@@ -147,6 +147,45 @@
       </div>
     </section>
 
+    <section class="energy-dashboard">
+      <section class="card energy-card energy-house-card">
+        <h2><span class="energy-icon">🏠</span> House Consumption</h2>
+        <div id="goodweHouseConsumption" class="energy-main-value">--</div>
+        <div class="energy-divider"></div>
+        <div class="energy-loads">
+          <div>
+            <span>💡 Normal Loads</span>
+            <strong id="goodweNormalLoads">--</strong>
+          </div>
+          <div>
+            <span>🔌 Backup Loads</span>
+            <strong id="goodweBackupLoads">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card energy-card energy-manager-card">
+        <h2><span class="energy-icon">☀</span> Energy Manager</h2>
+        <div class="energy-metrics">
+          <div><span>PV Production</span><strong id="goodwePvProduction">--</strong></div>
+          <div><span>House</span><strong id="goodweManagerHouse">--</strong></div>
+          <div><span>Battery</span><strong id="goodweBatterySoc">--</strong></div>
+          <div><span>Grid</span><strong id="goodweGridPower">--</strong></div>
+        </div>
+        <div class="energy-divider"></div>
+        <div class="energy-surplus">
+          <span>Available Surplus</span>
+          <strong id="goodweAvailableSurplus">--</strong>
+        </div>
+        <div class="smart-loads">🟢 Smart Loads Enabled</div>
+      </section>
+
+      <section class="card energy-card energy-temperature-card">
+        <h2><span class="energy-icon">🌡</span> Inverter Temperature</h2>
+        <div id="goodweTemperature" class="energy-main-value">--</div>
+      </section>
+    </section>
+
     <section class="card">
       <h2 data-i18n="telegram.title"></h2>
       <label class="checkbox-row">
