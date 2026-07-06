@@ -116,6 +116,25 @@
       "Automation completed early": "Automazione completata in anticipo"
     }
   },
+  "energy": {
+    "houseConsumption": "Consumo Casa",
+    "normalLoads": "Carichi Normali",
+    "backupLoads": "Carichi Backup",
+    "manager": "Gestione Energia",
+    "pvProduction": "Produzione FV",
+    "house": "Casa",
+    "battery": "Batteria",
+    "gridExchange": "Scambio con la rete",
+    "gridSubtitle": "Import / Export",
+    "availableSurplus": "Surplus Disponibile",
+    "smartLoads": {
+      "title": "Carichi Intelligenti",
+      "enabled": "Abilitati",
+      "waiting": "In attesa",
+      "disabled": "Disabilitati"
+    },
+    "inverterTemperature": "Temperatura Inverter"
+  },
   "relay": {
     "number": "relè {number}",
     "response": "Risposta: {response} · {ms} ms",

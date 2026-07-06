@@ -1,8 +1,10 @@
 import json
 import atexit
+import asyncio
 import shutil
 import threading
 import time
+import traceback
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Dict, Any
@@ -157,13 +159,28 @@ def public_config(cfg):
     return public
 
 
-GOODWE_STATUS_FIELDS = (
-    "pv_production",
+GOODWE_STATUS_FIELDS = {
+    "status": ("status",),
+    "pv_production": ("ppv", "pv_production"),
+    "house_consumption": ("house_consumption",),
+    "normal_loads": ("load_ptotal", "normal_loads"),
+    "backup_loads": ("backup_ptotal", "backup_loads"),
+    "battery_soc": ("battery_soc",),
+    "grid_power": ("meter_active_power_total", "grid_power"),
+    "temperature": ("temperature",)
+}
+GOODWE_HOST = "192.168.200.200"
+GOODWE_DAY_POLL_SECONDS = 60
+GOODWE_NIGHT_POLL_SECONDS = 300
+GOODWE_DAY_START_HOUR = 6
+GOODWE_DAY_END_HOUR = 22
+GOODWE_RUNTIME_KEYS = (
+    "ppv",
     "house_consumption",
-    "normal_loads",
-    "backup_loads",
+    "load_ptotal",
+    "backup_ptotal",
     "battery_soc",
-    "grid_power",
+    "meter_active_power_total",
     "temperature"
 )
 
@@ -172,7 +189,93 @@ def goodwe_status_snapshot():
     cached = _runtime.get("goodwe")
     if not isinstance(cached, dict):
         return {}
-    return {field: cached.get(field) for field in GOODWE_STATUS_FIELDS if field in cached}
+    snapshot = {}
+    for output_field, source_fields in GOODWE_STATUS_FIELDS.items():
+        for source_field in source_fields:
+            if source_field in cached:
+                snapshot[output_field] = cached.get(source_field)
+                break
+    return snapshot
+
+
+def goodwe_poll_interval_seconds():
+    current_hour = now().hour
+    if GOODWE_DAY_START_HOUR <= current_hour < GOODWE_DAY_END_HOUR:
+        return GOODWE_DAY_POLL_SECONDS
+    return GOODWE_NIGHT_POLL_SECONDS
+
+
+def goodwe_json_value(value):
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+async def read_goodwe_runtime_data():
+    log("GoodWe polling: importing goodwe library")
+    import goodwe
+
+    log(f"GoodWe polling: goodwe module loaded from {getattr(goodwe, '__file__', 'unknown')}")
+    log(f"GoodWe polling: calling goodwe.connect({GOODWE_HOST!r})")
+    inverter = await goodwe.connect(GOODWE_HOST)
+    log(f"GoodWe polling: goodwe.connect(...) completed with {type(inverter).__name__}")
+    log("GoodWe polling: calling read_runtime_data()")
+    data = await inverter.read_runtime_data()
+    log("GoodWe polling: read_runtime_data() completed")
+    return data
+
+
+def poll_goodwe_once():
+    log("GoodWe polling: poll cycle started")
+    data = asyncio.run(read_goodwe_runtime_data())
+    values = {
+        key: goodwe_json_value(data.get(key))
+        for key in GOODWE_RUNTIME_KEYS
+        if key in data
+    }
+    with _lock:
+        cached = _runtime.get("goodwe")
+        if not isinstance(cached, dict):
+            cached = {}
+        cached.update(values)
+        cached.update({
+            "status": "online",
+            "host": GOODWE_HOST,
+            "last_successful_poll": now().isoformat(timespec="seconds"),
+            "last_error": None
+        })
+        _runtime["goodwe"] = cached
+
+
+def mark_goodwe_offline(error):
+    with _lock:
+        cached = _runtime.get("goodwe")
+        if not isinstance(cached, dict):
+            cached = {}
+        cached.update({
+            "status": "offline",
+            "host": GOODWE_HOST,
+            "last_error": str(error),
+            "last_error_traceback": traceback.format_exc(),
+            "last_error_at": now().isoformat(timespec="seconds")
+        })
+        _runtime["goodwe"] = cached
+
+
+def goodwe_background_loop():
+    log(f"GoodWe polling service started for {GOODWE_HOST}")
+    while True:
+        try:
+            poll_goodwe_once()
+        except Exception as exc:
+            error_traceback = traceback.format_exc()
+            mark_goodwe_offline(exc)
+            log(f"ERRORE GoodWe polling: {exc}")
+            log(f"TRACEBACK GoodWe polling:\n{error_traceback}")
+        time.sleep(goodwe_poll_interval_seconds())
 
 
 def ensure_config_defaults(cfg):
@@ -2260,5 +2363,6 @@ def api_telegram_test():
 if __name__ == "__main__":
     start_temperature_service()
     threading.Thread(target=background_loop, daemon=True).start()
+    threading.Thread(target=goodwe_background_loop, daemon=True).start()
     cfg = load_config()
     app.run(host=cfg["app"].get("host", "0.0.0.0"), port=int(cfg["app"].get("port", 5000)), debug=False)

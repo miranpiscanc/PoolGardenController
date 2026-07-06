@@ -145,6 +145,19 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
+function renderSmartLoadsState(state = 'enabled') {
+  const el = document.getElementById('goodweSmartLoads');
+  if (!el) return;
+  const states = {
+    enabled: ['🟢', t('energy.smartLoads.enabled'), 'enabled'],
+    waiting: ['🟡', t('energy.smartLoads.waiting'), 'waiting'],
+    disabled: ['🔴', t('energy.smartLoads.disabled'), 'disabled']
+  };
+  const current = states[state] || states.enabled;
+  el.textContent = `${current[0]} ${t('energy.smartLoads.title')} ${current[1]}`;
+  el.className = `smart-loads ${current[2]}`;
+}
+
 function setLastRefresh(value) {
   const el = document.getElementById('lastRefresh');
   if (el) el.textContent = fmtDateTime(value);
@@ -378,6 +391,7 @@ function renderGoodWeDashboard(s) {
   setText('goodweGridPower', fmtPower(goodwe.grid_power));
   setText('goodweAvailableSurplus', fmtPower(availableSurplus));
   setText('goodweTemperature', fmtCelsius(goodwe.temperature));
+  renderSmartLoadsState('enabled');
 }
 
 function renderTelegramNotifications(s) {

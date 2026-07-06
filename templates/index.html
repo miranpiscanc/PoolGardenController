@@ -149,39 +149,43 @@
 
     <section class="energy-dashboard">
       <section class="card energy-card energy-house-card">
-        <h2><span class="energy-icon">🏠</span> House Consumption</h2>
+        <h2><span class="energy-icon">🏠</span> <span data-i18n="energy.houseConsumption"></span></h2>
         <div id="goodweHouseConsumption" class="energy-main-value">--</div>
         <div class="energy-divider"></div>
         <div class="energy-loads">
           <div>
-            <span>💡 Normal Loads</span>
+            <span>💡 <span data-i18n="energy.normalLoads"></span></span>
             <strong id="goodweNormalLoads">--</strong>
           </div>
           <div>
-            <span>🔌 Backup Loads</span>
+            <span>🔌 <span data-i18n="energy.backupLoads"></span></span>
             <strong id="goodweBackupLoads">--</strong>
           </div>
         </div>
       </section>
 
       <section class="card energy-card energy-manager-card">
-        <h2><span class="energy-icon">☀</span> Energy Manager</h2>
+        <h2><span class="energy-icon">☀</span> <span data-i18n="energy.manager"></span></h2>
         <div class="energy-metrics">
-          <div><span>PV Production</span><strong id="goodwePvProduction">--</strong></div>
-          <div><span>House</span><strong id="goodweManagerHouse">--</strong></div>
-          <div><span>Battery</span><strong id="goodweBatterySoc">--</strong></div>
-          <div><span>Grid</span><strong id="goodweGridPower">--</strong></div>
+          <div><span data-i18n="energy.pvProduction"></span><strong id="goodwePvProduction">--</strong></div>
+          <div><span data-i18n="energy.house"></span><strong id="goodweManagerHouse">--</strong></div>
+          <div><span data-i18n="energy.battery"></span><strong id="goodweBatterySoc">--</strong></div>
+          <div>
+            <span>⚡ <span data-i18n="energy.gridExchange"></span></span>
+            <small data-i18n="energy.gridSubtitle"></small>
+            <strong id="goodweGridPower">--</strong>
+          </div>
         </div>
         <div class="energy-divider"></div>
         <div class="energy-surplus">
-          <span>Available Surplus</span>
+          <span data-i18n="energy.availableSurplus"></span>
           <strong id="goodweAvailableSurplus">--</strong>
         </div>
-        <div class="smart-loads">🟢 Smart Loads Enabled</div>
+        <div id="goodweSmartLoads" class="smart-loads"></div>
       </section>
 
       <section class="card energy-card energy-temperature-card">
-        <h2><span class="energy-icon">🌡</span> Inverter Temperature</h2>
+        <h2><span class="energy-icon">🌡</span> <span data-i18n="energy.inverterTemperature"></span></h2>
         <div id="goodweTemperature" class="energy-main-value">--</div>
       </section>
     </section>

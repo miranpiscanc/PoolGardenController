@@ -116,6 +116,25 @@
       "Automation completed early": "Automation completed early"
     }
   },
+  "energy": {
+    "houseConsumption": "House Consumption",
+    "normalLoads": "Normal Loads",
+    "backupLoads": "Backup Loads",
+    "manager": "Energy Manager",
+    "pvProduction": "PV Production",
+    "house": "House",
+    "battery": "Battery",
+    "gridExchange": "Grid Import / Export",
+    "gridSubtitle": "Import / Export",
+    "availableSurplus": "Available Surplus",
+    "smartLoads": {
+      "title": "Smart Loads",
+      "enabled": "Enabled",
+      "waiting": "Waiting",
+      "disabled": "Disabled"
+    },
+    "inverterTemperature": "Inverter Temperature"
+  },
   "relay": {
     "number": "relay {number}",
     "response": "Response: {response} · {ms} ms",
