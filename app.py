@@ -9,11 +9,13 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Dict, Any
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request
 
 from notification_service import NotificationService
 from relay_client import HHCRelayClient
 from temperature_service import DEFAULT_TEMPERATURE_SENSORS, TemperatureService
+from weather_service import DEFAULT_WEATHER_CONFIG, WeatherService
+from history_service import DEFAULT_HISTORY_CONFIG, HistoryService
 
 BASE = Path(__file__).resolve().parent
 DATA_DIR = BASE / "data"
@@ -22,6 +24,7 @@ CONFIG_DEFAULTS_PATH = BASE / "config.defaults.json"
 CONFIG_PATH = DATA_DIR / "config.json"
 LANG_DIR = BASE / "lang"
 STATE_PATH = DATA_DIR / "state.json"
+HISTORY_DB_PATH = DATA_DIR / "history.sqlite3"
 HEATER_STATS_PATH = DATA_DIR / "heater_statistics.json"
 DEVICE_STATS_PATH = DATA_DIR / "device_statistics.json"
 EVENT_LOG_PATH = DATA_DIR / "event_log.json"
@@ -48,6 +51,9 @@ _runtime: Dict[str, Any] = {
         "safe_stop_completed_date": None,
         "last_temperature_check_at": None,
         "next_temperature_check_at": None,
+        "last_pv_running_check_at": None,
+        "pv_confirmation_started_at": None,
+        "pv_confirmation_due_at": None,
         "early_completion_started_at": None,
         "early_completion_target_temperature": None,
         "early_completion_completed_date": None
@@ -66,6 +72,8 @@ _safe_stop_thread = None
 _safe_stop_reset_thread = None
 _solar_safe_stop_monitor_thread = None
 temperature_service = None
+weather_service = None
+history_service = None
 notification_service = NotificationService()
 SAFE_STOP_COMPLETED_VISIBLE_SECONDS = 3
 MAX_EVENTS = 500
@@ -156,6 +164,7 @@ def public_config(cfg):
         telegram["bot_token"] = ""
         telegram["bot_token_masked"] = masked_token(token)
         telegram["bot_token_configured"] = bool(token)
+    public.pop("viewer", None)
     return public
 
 
@@ -166,6 +175,10 @@ GOODWE_STATUS_FIELDS = {
     "normal_loads": ("load_ptotal", "normal_loads"),
     "backup_loads": ("backup_ptotal", "backup_loads"),
     "battery_soc": ("battery_soc",),
+    "pbattery1": ("pbattery1",),
+    "battery_power": ("pbattery1",),
+    "battery_mode_label": ("battery_mode_label",),
+    "battery_temperature": ("battery_temperature",),
     "grid_power": ("meter_active_power_total", "grid_power"),
     "temperature": ("temperature",)
 }
@@ -174,12 +187,17 @@ GOODWE_DAY_POLL_SECONDS = 60
 GOODWE_NIGHT_POLL_SECONDS = 300
 GOODWE_DAY_START_HOUR = 6
 GOODWE_DAY_END_HOUR = 22
+goodwe_failure_count = 0
+goodwe_last_success = None
 GOODWE_RUNTIME_KEYS = (
     "ppv",
     "house_consumption",
     "load_ptotal",
     "backup_ptotal",
     "battery_soc",
+    "pbattery1",
+    "battery_mode_label",
+    "battery_temperature",
     "meter_active_power_total",
     "temperature"
 )
@@ -196,6 +214,97 @@ def goodwe_status_snapshot():
                 snapshot[output_field] = cached.get(source_field)
                 break
     return snapshot
+
+
+def viewer_config(cfg):
+    ensure_config_defaults(cfg)
+    return cfg.get("viewer", {})
+
+
+def viewer_refresh_seconds(cfg):
+    viewer = viewer_config(cfg)
+    try:
+        seconds = int(float(viewer.get("refresh_seconds", 30)))
+    except (TypeError, ValueError):
+        seconds = 30
+    return max(5, min(3600, seconds))
+
+
+def numeric_or_none(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def require_viewer_access(cfg):
+    viewer = viewer_config(cfg)
+    if viewer.get("enabled") is False:
+        abort(403)
+    token = str(viewer.get("token") or "")
+    if token and request.args.get("token") != token:
+        abort(403)
+
+
+def viewer_href(path="/viewer"):
+    token = request.args.get("token") or ""
+    return f"{path}?token={token}" if token else path
+
+
+def temperature_viewer_snapshot():
+    snapshot = temperature_service.snapshot() if temperature_service else {}
+    sensors = snapshot.get("sensors", {}) if isinstance(snapshot, dict) else {}
+    water = sensors.get("water") or {}
+    return {
+        "sensors": {
+            "water": {
+                "value": water.get("value"),
+                "online": bool(water.get("online"))
+            }
+        },
+        "communication": snapshot.get("communication", {}),
+        "last_update": snapshot.get("last_update")
+    }
+
+
+def goodwe_viewer_snapshot():
+    goodwe = goodwe_status_snapshot()
+    cached = _runtime.get("goodwe")
+    if isinstance(cached, dict):
+        goodwe["last_update"] = cached.get("last_successful_poll")
+        goodwe["online"] = cached.get("status") == "online"
+    else:
+        goodwe["last_update"] = None
+        goodwe["online"] = False
+    pv = numeric_or_none(goodwe.get("pv_production"))
+    house = numeric_or_none(goodwe.get("house_consumption"))
+    goodwe["available_surplus"] = None if pv is None or house is None else max(0, pv - house)
+    return goodwe
+
+
+def viewer_statistics_snapshot(cfg):
+    snapshot = statistics_snapshot(cfg)
+    return {
+        key: {
+            "key": value.get("key"),
+            "device": value.get("device"),
+            "device_name": value.get("device_name"),
+            "relay": value.get("relay"),
+            "name": value.get("name"),
+            "icon": value.get("icon"),
+            "daily_seconds": value.get("daily_seconds", 0),
+            "seasonal_seconds": value.get("seasonal_seconds", 0),
+            "total_seconds": value.get("total_seconds", 0),
+            "starts": value.get("starts", 0)
+        }
+        for key, value in snapshot.items()
+    }
+
+
+def viewer_relay_state(device_id, relay_number):
+    return relay_active_from_runtime(device_id, str(relay_number))
 
 
 def goodwe_poll_interval_seconds():
@@ -219,8 +328,8 @@ async def read_goodwe_runtime_data():
     import goodwe
 
     log(f"GoodWe polling: goodwe module loaded from {getattr(goodwe, '__file__', 'unknown')}")
-    log(f"GoodWe polling: calling goodwe.connect({GOODWE_HOST!r})")
-    inverter = await goodwe.connect(GOODWE_HOST)
+    log(f"GoodWe polling: calling goodwe.connect({GOODWE_HOST!r}, family='ET')")
+    inverter = await goodwe.connect(GOODWE_HOST, family="ET")
     log(f"GoodWe polling: goodwe.connect(...) completed with {type(inverter).__name__}")
     log("GoodWe polling: calling read_runtime_data()")
     data = await inverter.read_runtime_data()
@@ -229,8 +338,11 @@ async def read_goodwe_runtime_data():
 
 
 def poll_goodwe_once():
+    global goodwe_failure_count, goodwe_last_success
     log("GoodWe polling: poll cycle started")
     data = asyncio.run(read_goodwe_runtime_data())
+    goodwe_last_success = now()
+    goodwe_failure_count = 0
     values = {
         key: goodwe_json_value(data.get(key))
         for key in GOODWE_RUNTIME_KEYS
@@ -250,6 +362,25 @@ def poll_goodwe_once():
         _runtime["goodwe"] = cached
 
 
+def goodwe_last_success_label():
+    if goodwe_last_success is None:
+        return "never"
+    return goodwe_last_success.strftime("%H:%M:%S")
+
+
+def log_goodwe_poll_success(next_poll_seconds):
+    log("GoodWe polling completed successfully.")
+    log(f"Last successful update: {goodwe_last_success_label()}")
+    log(f"Next poll in {next_poll_seconds} seconds.")
+
+
+def log_goodwe_poll_failure(next_retry_seconds):
+    log("GoodWe polling FAILED.")
+    log(f"Consecutive failures: {goodwe_failure_count}")
+    log(f"Last successful update: {goodwe_last_success_label()}")
+    log(f"Next retry in {next_retry_seconds} seconds.")
+
+
 def mark_goodwe_offline(error):
     with _lock:
         cached = _runtime.get("goodwe")
@@ -266,16 +397,25 @@ def mark_goodwe_offline(error):
 
 
 def goodwe_background_loop():
+    global goodwe_failure_count
     log(f"GoodWe polling service started for {GOODWE_HOST}")
     while True:
+        poll_succeeded = False
         try:
             poll_goodwe_once()
+            poll_succeeded = True
         except Exception as exc:
+            goodwe_failure_count += 1
             error_traceback = traceback.format_exc()
             mark_goodwe_offline(exc)
             log(f"ERRORE GoodWe polling: {exc}")
             log(f"TRACEBACK GoodWe polling:\n{error_traceback}")
-        time.sleep(goodwe_poll_interval_seconds())
+        next_poll_seconds = goodwe_poll_interval_seconds()
+        if poll_succeeded:
+            log_goodwe_poll_success(next_poll_seconds)
+        else:
+            log_goodwe_poll_failure(next_poll_seconds)
+        time.sleep(next_poll_seconds)
 
 
 def ensure_config_defaults(cfg):
@@ -295,7 +435,10 @@ def ensure_config_defaults(cfg):
         "forced_stop_time": "17:00",
         "temperature_check_interval_seconds": 900,
         "early_completion_temperature": 31.0,
-        "early_completion_confirmation_minutes": 120
+        "early_completion_confirmation_minutes": 120,
+        "minimum_pv_production_watts": 3000,
+        "pv_running_check_interval_minutes": 30,
+        "pv_confirmation_delay_minutes": 15
     }
     for key, value in defaults.items():
         if key not in solar:
@@ -318,6 +461,69 @@ def ensure_config_defaults(cfg):
         if key not in telegram:
             telegram[key] = value
             changed = True
+    if "viewer" not in cfg or not isinstance(cfg.get("viewer"), dict):
+        cfg["viewer"] = {}
+        changed = True
+    viewer = cfg["viewer"]
+    viewer_defaults = {
+        "enabled": True,
+        "token": "",
+        "refresh_seconds": 30
+    }
+    for key, value in viewer_defaults.items():
+        if key not in viewer:
+            viewer[key] = value
+            changed = True
+    if "weather" not in cfg or not isinstance(cfg.get("weather"), dict):
+        cfg["weather"] = json.loads(json.dumps(DEFAULT_WEATHER_CONFIG))
+        changed = True
+    else:
+        weather = cfg["weather"]
+        for key in ("poll_seconds", "timeout_seconds", "retry_count"):
+            if key not in weather:
+                weather[key] = DEFAULT_WEATHER_CONFIG[key]
+                changed = True
+        for key in ("sources", "locations"):
+            if key not in weather or not isinstance(weather.get(key), dict):
+                weather[key] = json.loads(json.dumps(DEFAULT_WEATHER_CONFIG[key]))
+                changed = True
+        for source_key, source in DEFAULT_WEATHER_CONFIG.get("sources", {}).items():
+            if source_key not in weather["sources"]:
+                weather["sources"][source_key] = json.loads(json.dumps(source))
+                changed = True
+        for location_key, location in DEFAULT_WEATHER_CONFIG.get("locations", {}).items():
+            if location_key not in weather["locations"] or not isinstance(weather["locations"].get(location_key), dict):
+                weather["locations"][location_key] = json.loads(json.dumps(location))
+                changed = True
+                continue
+            target_location = weather["locations"][location_key]
+            target_location.setdefault("label", location.get("label", location_key))
+            if "metrics" not in target_location or not isinstance(target_location.get("metrics"), dict):
+                target_location["metrics"] = {}
+                changed = True
+            for metric_key, metric in (location.get("metrics") or {}).items():
+                target_metric = target_location["metrics"].get(metric_key)
+                if not isinstance(target_metric, dict) or target_metric.get("placeholder"):
+                    target_location["metrics"][metric_key] = json.loads(json.dumps(metric))
+                    changed = True
+        opicina_metrics = (((weather.get("locations") or {}).get("opicina") or {}).get("metrics") or {})
+        temperature_metric = opicina_metrics.get("temperature") or {}
+        humidity_metric = opicina_metrics.get("humidity") or {}
+        if temperature_metric.get("source") == "opicina_hwg_ste" and temperature_metric.get("sensor_id") == 1:
+            temperature_metric["sensor_id"] = 215
+            changed = True
+        if humidity_metric.get("source") == "opicina_hwg_ste" and humidity_metric.get("sensor_id") == 2:
+            humidity_metric["sensor_id"] = 216
+            changed = True
+    if "history" not in cfg or not isinstance(cfg.get("history"), dict):
+        cfg["history"] = json.loads(json.dumps(DEFAULT_HISTORY_CONFIG))
+        changed = True
+    else:
+        history = cfg["history"]
+        for key, value in DEFAULT_HISTORY_CONFIG.items():
+            if key not in history:
+                history[key] = value
+                changed = True
     return changed
 
 
@@ -1517,6 +1723,48 @@ def early_completion_confirmation_minutes(solar):
     return min(240, max(30, minutes))
 
 
+def minimum_pv_production_watts(solar):
+    try:
+        watts = int(float(solar.get("minimum_pv_production_watts", 3000)))
+    except (TypeError, ValueError):
+        watts = 3000
+    return max(0, watts)
+
+
+def pv_running_check_interval_minutes(solar):
+    try:
+        minutes = int(float(solar.get("pv_running_check_interval_minutes", 30)))
+    except (TypeError, ValueError):
+        minutes = 30
+    return max(1, minutes)
+
+
+def pv_confirmation_delay_minutes(solar):
+    try:
+        minutes = int(float(solar.get("pv_confirmation_delay_minutes", 15)))
+    except (TypeError, ValueError):
+        minutes = 15
+    return max(1, minutes)
+
+
+def cached_goodwe_pv_production():
+    cached = _runtime.get("goodwe")
+    if not isinstance(cached, dict):
+        return None
+    for key in GOODWE_STATUS_FIELDS["pv_production"]:
+        if key in cached:
+            try:
+                return float(cached.get(key))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def pv_production_available(solar):
+    pv = cached_goodwe_pv_production()
+    return pv is not None and pv >= minimum_pv_production_watts(solar)
+
+
 def set_solar_next_temperature_check(state, value):
     state["next_temperature_check_at"] = value.isoformat(timespec="seconds") if value else None
 
@@ -1524,6 +1772,11 @@ def set_solar_next_temperature_check(state, value):
 def reset_early_completion_timer(state):
     state["early_completion_started_at"] = None
     state["early_completion_target_temperature"] = None
+
+
+def reset_solar_pv_confirmation(state):
+    state["pv_confirmation_started_at"] = None
+    state["pv_confirmation_due_at"] = None
 
 
 def early_completion_snapshot(solar, runtime):
@@ -1563,6 +1816,7 @@ def reconcile_solar_temperature_schedule(cfg, force_due=False, current=None):
         or current >= stop
     ):
         set_solar_next_temperature_check(state, None)
+        reset_solar_pv_confirmation(state)
         return None
 
     if current < start:
@@ -1641,6 +1895,13 @@ def solar_heating_status_details(solar, runtime, start, stop):
         if safe_stop.get("running"):
             return {"key": "solar.message.safeStopRunning", "vars": {}, "message": "Safe Stop running..."}
         return {"key": "solar.message.completedToday", "vars": {}, "message": "Automation completed for today"}
+    pv_confirmation_due = runtime.get("pv_confirmation_due_at")
+    if pv_confirmation_due:
+        return {
+            "key": "solar.message.pvInsufficientConfirmation",
+            "vars": {"time": fmt_time_iso(pv_confirmation_due)},
+            "message": f"⚠ Produzione FV insufficiente\n\nSecondo controllo alle {fmt_time_iso(pv_confirmation_due)}"
+        }
     early = runtime.get("early_completion", {})
     if early.get("active"):
         minutes = int((early.get("remaining_seconds", 0) + 59) / 60)
@@ -1738,6 +1999,7 @@ def relay_active_from_runtime(device_id, relay_number):
 def complete_solar_for_today(state, today, event, reason=""):
     state["safe_stop_completed_date"] = today
     set_solar_next_temperature_check(state, None)
+    reset_solar_pv_confirmation(state)
     reset_early_completion_timer(state)
     save_state()
     record_solar_event(event, reason)
@@ -1749,6 +2011,7 @@ def start_solar_safe_stop(state, today, event, source, early=False):
     if early:
         state["early_completion_completed_date"] = today
     set_solar_next_temperature_check(state, None)
+    reset_solar_pv_confirmation(state)
     save_state()
     record_solar_event(event)
     start_heater_safe_stop(source=source)
@@ -1812,6 +2075,47 @@ def early_completion_deadline_reached(solar, state, current):
     return current >= started_at + confirmation
 
 
+def handle_solar_running_pv_check(solar, state, today, current, heater_active):
+    if state.get("auto_started_date") != today or heater_active is not True:
+        reset_solar_pv_confirmation(state)
+        return False
+
+    confirmation_due = parse_iso_datetime(state.get("pv_confirmation_due_at"))
+    if confirmation_due:
+        if current < confirmation_due:
+            return True
+        state["last_pv_running_check_at"] = current.isoformat(timespec="seconds")
+        if pv_production_available(solar):
+            reset_solar_pv_confirmation(state)
+            save_state()
+            record_solar_event("PV production recovered")
+            return False
+        start_solar_safe_stop(
+            state,
+            today,
+            "Automatic Safe Stop started",
+            "solar_heating_pv_confirmation"
+        )
+        return True
+
+    last_check = parse_iso_datetime(state.get("last_pv_running_check_at"))
+    interval = timedelta(minutes=pv_running_check_interval_minutes(solar))
+    if last_check and current < last_check + interval:
+        return False
+
+    state["last_pv_running_check_at"] = current.isoformat(timespec="seconds")
+    if pv_production_available(solar):
+        save_state()
+        return False
+
+    confirmation_due = current + timedelta(minutes=pv_confirmation_delay_minutes(solar))
+    state["pv_confirmation_started_at"] = current.isoformat(timespec="seconds")
+    state["pv_confirmation_due_at"] = confirmation_due.isoformat(timespec="seconds")
+    save_state()
+    record_solar_event("PV production insufficient", f"Second check at {confirmation_due.strftime('%H:%M')}")
+    return True
+
+
 def solar_heating_tick():
     cfg = load_config()
     solar = solar_heating_config(cfg)
@@ -1820,6 +2124,7 @@ def solar_heating_tick():
 
     if not solar.get("enabled"):
         set_solar_next_temperature_check(state, None)
+        reset_solar_pv_confirmation(state)
         reset_early_completion_timer(state)
         return
 
@@ -1862,6 +2167,10 @@ def solar_heating_tick():
             )
         else:
             complete_solar_for_today(state, today, "Automation completed for today", "Stop time reached")
+        return
+
+    heater_active = relay_active_from_runtime(heater_dev, heater_no)
+    if handle_solar_running_pv_check(solar, state, today, current, heater_active):
         return
 
     if early_completion_deadline_reached(solar, state, current):
@@ -1930,8 +2239,16 @@ def solar_heating_tick():
         record_solar_event(f"Temperature OK (Water {water_temperature:.1f}°C)")
         return
 
+    if not pv_production_available(solar):
+        schedule_solar_temperature_recheck(cfg, checked_at)
+        save_state()
+        record_solar_event(
+            "Automatic heating skipped",
+            f"PV production below {minimum_pv_production_watts(solar)} W"
+        )
+        return
+
     pump_active = relay_active_from_runtime(pump_dev, pump_no)
-    heater_active = relay_active_from_runtime(heater_dev, heater_no)
     started_any = False
     if pump_active is not True:
         pump_status = set_one_raw(cfg, pump_dev, pump_no, True, source="solar_heating")
@@ -1952,6 +2269,8 @@ def solar_heating_tick():
     state["auto_started_date"] = today
     state["safe_stop_started_date"] = None
     state["safe_stop_completed_date"] = None
+    state["last_pv_running_check_at"] = checked_at.isoformat(timespec="seconds")
+    reset_solar_pv_confirmation(state)
     schedule_solar_temperature_recheck(cfg, checked_at)
     save_state()
     if started_any:
@@ -2068,11 +2387,98 @@ def stop_temperature_service():
 atexit.register(stop_temperature_service)
 
 
+def start_weather_service():
+    global weather_service
+    if weather_service is None:
+        cfg = load_config()
+        weather_service = WeatherService(
+            cfg.get("weather", DEFAULT_WEATHER_CONFIG),
+            event_callback=record_event,
+            log_callback=log
+        )
+    weather_service.start()
+    return weather_service
+
+
+def stop_weather_service():
+    if weather_service is not None:
+        weather_service.stop()
+
+
+atexit.register(stop_weather_service)
+
+
+def weather_snapshot_for_history():
+    return weather_service.snapshot() if weather_service else {}
+
+
+def start_history_service():
+    global history_service
+    if history_service is None:
+        cfg = load_config()
+        history_cfg = cfg.get("history", DEFAULT_HISTORY_CONFIG)
+        history_service = HistoryService(
+            HISTORY_DB_PATH,
+            weather_snapshot_for_history,
+            sample_seconds=history_cfg.get("sample_seconds", 300),
+            enabled=history_cfg.get("enabled", True),
+            log_callback=log
+        )
+    history_service.start()
+    return history_service
+
+
+def stop_history_service():
+    if history_service is not None:
+        history_service.stop()
+
+
+atexit.register(stop_history_service)
+
+
 @app.route("/")
 def index():
     cfg = load_config()
     lang = selected_language(cfg, persist_browser=True)
     return render_template("index.html", language=lang)
+
+
+@app.route("/viewer")
+def viewer():
+    cfg = load_config()
+    require_viewer_access(cfg)
+    return render_template("viewer.html", refresh_seconds=viewer_refresh_seconds(cfg))
+
+
+@app.route("/viewer/history")
+def viewer_history():
+    cfg = load_config()
+    require_viewer_access(cfg)
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template("history.html", language=lang, back_href=viewer_href(), back_i18n="nav.viewer")
+
+
+@app.route("/viewer/report")
+def viewer_report():
+    cfg = load_config()
+    require_viewer_access(cfg)
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template("statistics.html", language=lang, back_href=viewer_href(), back_i18n="nav.viewer")
+
+
+@app.route("/viewer/event-log")
+def viewer_event_log():
+    cfg = load_config()
+    require_viewer_access(cfg)
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template("event_log.html", language=lang, back_href=viewer_href(), back_i18n="nav.viewer")
+
+
+@app.route("/history")
+def history():
+    cfg = load_config()
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template("history.html", language=lang)
 
 
 @app.route("/api/i18n")
@@ -2124,6 +2530,7 @@ def api_status():
             "devices": _runtime["devices"],
             "relays": _runtime["relays"],
             "temperatures": temperature_service.snapshot() if temperature_service else {},
+            "weather": weather_service.snapshot() if weather_service else {},
             "goodwe": goodwe_status_snapshot(),
             "heater_statistics": heater_statistics_snapshot(),
             "statistics": statistics_snapshot(cfg),
@@ -2139,6 +2546,65 @@ def api_status():
             },
             "now": now().isoformat(timespec="seconds")
         })
+
+
+@app.route("/api/viewer/status")
+def api_viewer_status():
+    cfg = load_config()
+    require_viewer_access(cfg)
+    version = app_version(cfg)
+    pump_cfg = cfg.get("pump", {})
+    heater_dev, heater_no = heater_relay(cfg)
+    garden_cfg = cfg.get("devices", {}).get("garden", {}).get("relays", {})
+    garden_relay_no = next(iter(garden_cfg.keys()), "1")
+    start, stop = solar_heating_window(cfg)
+    solar = solar_heating_snapshot(cfg)
+    heater_stats = heater_statistics_snapshot()
+    current = now().isoformat(timespec="seconds")
+    pump_active = viewer_relay_state(pump_cfg.get("device", "pool"), str(pump_cfg.get("relay", "2")))
+    _, pump_stop = pump_window(cfg)
+    pump = {
+        "mode": pump_cfg.get("mode", "auto"),
+        "duration_hours": pump_cfg.get("duration_hours", 6),
+        "computed_stop_time": pump_stop.strftime("%H:%M"),
+        "active": pump_active,
+        "remaining_seconds": max(0, int((pump_stop - now()).total_seconds())) if pump_active else 0
+    }
+    return jsonify({
+        "ok": True,
+        "refresh_seconds": viewer_refresh_seconds(cfg),
+        "energy": goodwe_viewer_snapshot(),
+        "temperatures": temperature_viewer_snapshot(),
+        "weather": weather_service.snapshot() if weather_service else {},
+        "pool": {
+            "pump": pump,
+            "heater_active": viewer_relay_state(heater_dev, heater_no)
+        },
+        "garden": {
+            "lights_active": viewer_relay_state("garden", garden_relay_no)
+        },
+        "solar_heating": {
+            "enabled": bool(solar.get("enabled")),
+            "status": solar.get("status"),
+            "status_label": solar.get("status_label"),
+            "status_message": solar.get("status_message"),
+            "status_message_key": solar.get("status_message_key"),
+            "status_message_vars": solar.get("status_message_vars"),
+            "water_temperature": solar.get("water_temperature"),
+            "water_temperature_threshold": solar.get("water_temperature_threshold"),
+            "operating_start_time": start.strftime("%H:%M"),
+            "operating_stop_time": stop.strftime("%H:%M"),
+            "next_temperature_check": (solar.get("runtime") or {}).get("next_temperature_check_at"),
+            "heating_today_seconds": heater_stats.get("daily_seconds", 0)
+        },
+        "statistics": viewer_statistics_snapshot(cfg),
+        "general": {
+            "version": version,
+            "current_time": current,
+            "last_dashboard_update": current,
+            "last_successful_refresh": _runtime.get("last_poll")
+        }
+    })
 
 
 @app.route("/api/relay", methods=["POST"])
@@ -2216,6 +2682,24 @@ def api_reset_statistics_season():
     return jsonify({"ok": True, "statistics": stats})
 
 
+@app.route("/api/history")
+def api_history():
+    period = request.args.get("period", "24h")
+    location = request.args.get("location", "opicina")
+    if history_service is None:
+        return jsonify({
+            "ok": False,
+            "error": "History service unavailable",
+            "statistics": {},
+            "graph": {"series": []}
+        }), 503
+    return jsonify({
+        "ok": True,
+        **history_service.snapshot(period=period, location=location),
+        "now": now().isoformat(timespec="seconds")
+    })
+
+
 @app.route("/api/events")
 def api_events():
     with _lock:
@@ -2229,6 +2713,7 @@ def api_events():
 
 
 @app.route("/statistics")
+@app.route("/report")
 def statistics_page():
     cfg = load_config()
     lang = selected_language(cfg, persist_browser=True)
@@ -2282,12 +2767,37 @@ def api_solar_heating_config():
         if confirmation_minutes < 30 or confirmation_minutes > 240:
             return jsonify({"ok": False, "error": "Invalid early_completion_confirmation_minutes"}), 400
         solar["early_completion_confirmation_minutes"] = confirmation_minutes
+    if "minimum_pv_production_watts" in data:
+        try:
+            minimum_pv_watts = int(float(data["minimum_pv_production_watts"]))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid minimum_pv_production_watts"}), 400
+        if minimum_pv_watts < 0:
+            return jsonify({"ok": False, "error": "Invalid minimum_pv_production_watts"}), 400
+        solar["minimum_pv_production_watts"] = minimum_pv_watts
+    if "pv_running_check_interval_minutes" in data:
+        try:
+            pv_interval_minutes = int(float(data["pv_running_check_interval_minutes"]))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid pv_running_check_interval_minutes"}), 400
+        if pv_interval_minutes < 1:
+            return jsonify({"ok": False, "error": "Invalid pv_running_check_interval_minutes"}), 400
+        solar["pv_running_check_interval_minutes"] = pv_interval_minutes
+    if "pv_confirmation_delay_minutes" in data:
+        try:
+            pv_confirmation_minutes = int(float(data["pv_confirmation_delay_minutes"]))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid pv_confirmation_delay_minutes"}), 400
+        if pv_confirmation_minutes < 1:
+            return jsonify({"ok": False, "error": "Invalid pv_confirmation_delay_minutes"}), 400
+        solar["pv_confirmation_delay_minutes"] = pv_confirmation_minutes
 
     save_config(cfg)
     is_enabled = bool(solar.get("enabled"))
     if is_enabled:
         with _lock:
             _runtime["solar_heating"]["last_temperature_check_at"] = None
+            reset_solar_pv_confirmation(_runtime["solar_heating"])
             reset_early_completion_timer(_runtime["solar_heating"])
             reconcile_solar_temperature_schedule(cfg, force_due=True)
             save_state()
@@ -2295,6 +2805,7 @@ def api_solar_heating_config():
     else:
         with _lock:
             set_solar_next_temperature_check(_runtime["solar_heating"], None)
+            reset_solar_pv_confirmation(_runtime["solar_heating"])
             reset_early_completion_timer(_runtime["solar_heating"])
             save_state()
     if is_enabled != was_enabled:
@@ -2362,6 +2873,8 @@ def api_telegram_test():
 
 if __name__ == "__main__":
     start_temperature_service()
+    start_weather_service()
+    start_history_service()
     threading.Thread(target=background_loop, daemon=True).start()
     threading.Thread(target=goodwe_background_loop, daemon=True).start()
     cfg = load_config()

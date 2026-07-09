@@ -11,16 +11,70 @@
     <header class="hero">
       <div>
         <h1 data-i18n="app.dashboardTitle"></h1>
-        <p id="appMeta" data-i18n="common.loading"></p>
+        <p class="hero-subtitle" data-i18n="energy.dashboardSubtitle"></p>
+        <small class="hero-refresh" data-i18n="energy.dashboardRefresh"></small>
       </div>
       <div class="header-actions">
         <div id="languageSelector" class="language-selector"></div>
         <div id="globalStatus" class="pill gray" data-i18n="common.loading"></div>
+        <div id="appMeta" class="header-meta" data-i18n="common.loading"></div>
       </div>
     </header>
 
+    <section class="energy-dashboard">
+      <section class="card energy-card energy-house-card">
+        <h2><span class="energy-icon">🏠</span> <span data-i18n="energy.houseConsumption"></span></h2>
+        <div id="goodweHouseConsumption" class="energy-main-value">--</div>
+        <div class="energy-divider"></div>
+        <div class="energy-loads">
+          <div>
+            <span>💡 <span data-i18n="energy.normalLoads"></span></span>
+            <strong id="goodweNormalLoads">--</strong>
+          </div>
+          <div>
+            <span>🔌 <span data-i18n="energy.backupLoads"></span></span>
+            <strong id="goodweBackupLoads">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card energy-card energy-manager-card">
+        <h2><span class="energy-icon">☀</span> <span data-i18n="energy.manager"></span></h2>
+        <div class="energy-metrics">
+          <div><span data-i18n="energy.pvProduction"></span><strong id="goodwePvProduction">--</strong></div>
+          <div><span data-i18n="energy.house"></span><strong id="goodweManagerHouse">--</strong></div>
+          <div>
+            <span>🔋 <span data-i18n="energy.battery"></span></span>
+            <strong id="goodweBatterySoc">--</strong>
+            <em id="goodweBatteryDirection" class="battery-direction">--</em>
+            <strong id="goodweBatteryPower" class="battery-power-value">--</strong>
+            <em class="battery-temperature-label">🌡 <span data-i18n="energy.battery"></span></em>
+            <strong id="goodweBatteryTemperature" class="battery-temperature-value" data-i18n-title="energy.batteryTemperature">--</strong>
+          </div>
+          <div>
+            <span>⚡ <span data-i18n="energy.gridExchange"></span></span>
+            <small data-i18n="energy.gridSubtitle"></small>
+            <strong id="goodweGridPower">--</strong>
+            <em id="goodweGridDirection" class="grid-direction">--</em>
+          </div>
+        </div>
+        <div class="energy-divider"></div>
+        <div class="energy-surplus">
+          <span data-i18n="energy.availableSurplus"></span>
+          <strong id="goodweAvailableSurplus">--</strong>
+        </div>
+        <div id="goodweSmartLoads" class="smart-loads"></div>
+      </section>
+
+      <section class="card energy-card energy-temperature-card">
+        <h2><span class="energy-icon">🌡</span> <span data-i18n="energy.inverterTemperature"></span></h2>
+        <div id="goodweTemperature" class="energy-main-value">--</div>
+      </section>
+    </section>
+
     <nav class="row gap nav-actions">
-      <a class="button-link" href="/statistics" data-i18n="nav.statistics"></a>
+      <a class="button-link" href="/history" data-i18n="nav.history"></a>
+      <a class="button-link" href="/report" data-i18n="nav.statistics"></a>
       <a class="button-link" href="/event-log" data-i18n="nav.eventLog"></a>
       <button class="secondary" type="button" onclick="refreshRelays()" data-i18n="nav.refreshRelays"></button>
     </nav>
@@ -72,10 +126,6 @@
               <div class="muted" data-i18n="temperature.water"></div>
               <div id="waterTemperature" class="temperature-value">--</div>
             </div>
-            <div>
-              <div class="muted" data-i18n="temperature.outside"></div>
-              <div id="outsideTemperature" class="temperature-value">--</div>
-            </div>
           </div>
           <div class="temperature-status">
             <div class="muted" data-i18n="temperature.communicationStatus"></div>
@@ -86,6 +136,19 @@
             <div id="temperatureLastUpdate">--:--:--</div>
           </div>
         </section>
+      </div>
+    </section>
+
+    <section class="card weather-card">
+      <h2 data-i18n="weather.title"></h2>
+      <div id="weatherLocations" class="weather-locations"></div>
+      <div class="temperature-status">
+        <div class="muted" data-i18n="weather.communicationStatus"></div>
+        <div id="weatherCommunication" class="pill gray" data-i18n="common.loading"></div>
+      </div>
+      <div class="temperature-footer">
+        <div class="muted" data-i18n="common.lastUpdate"></div>
+        <div id="weatherLastUpdate">--:--:--</div>
       </div>
     </section>
 
@@ -141,53 +204,19 @@
         <label><span data-i18n="solar.earlyCompletionConfirmation"></span>
           <input id="solarEarlyCompletionConfirmation" type="number" min="30" max="240" step="5" value="120">
         </label>
+        <label><span data-i18n="solar.minimumPvProduction"></span>
+          <input id="solarMinimumPvProduction" type="number" min="0" step="100" value="3000">
+        </label>
+        <label><span data-i18n="solar.pvRunningCheckInterval"></span>
+          <input id="solarPvRunningCheckInterval" type="number" min="1" step="1" value="30">
+        </label>
+        <label><span data-i18n="solar.pvConfirmationDelay"></span>
+          <input id="solarPvConfirmationDelay" type="number" min="1" step="1" value="15">
+        </label>
       </div>
       <div class="row gap">
         <button onclick="saveSolarHeatingConfig()" data-i18n="solar.saveAutomation"></button>
       </div>
-    </section>
-
-    <section class="energy-dashboard">
-      <section class="card energy-card energy-house-card">
-        <h2><span class="energy-icon">🏠</span> <span data-i18n="energy.houseConsumption"></span></h2>
-        <div id="goodweHouseConsumption" class="energy-main-value">--</div>
-        <div class="energy-divider"></div>
-        <div class="energy-loads">
-          <div>
-            <span>💡 <span data-i18n="energy.normalLoads"></span></span>
-            <strong id="goodweNormalLoads">--</strong>
-          </div>
-          <div>
-            <span>🔌 <span data-i18n="energy.backupLoads"></span></span>
-            <strong id="goodweBackupLoads">--</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="card energy-card energy-manager-card">
-        <h2><span class="energy-icon">☀</span> <span data-i18n="energy.manager"></span></h2>
-        <div class="energy-metrics">
-          <div><span data-i18n="energy.pvProduction"></span><strong id="goodwePvProduction">--</strong></div>
-          <div><span data-i18n="energy.house"></span><strong id="goodweManagerHouse">--</strong></div>
-          <div><span data-i18n="energy.battery"></span><strong id="goodweBatterySoc">--</strong></div>
-          <div>
-            <span>⚡ <span data-i18n="energy.gridExchange"></span></span>
-            <small data-i18n="energy.gridSubtitle"></small>
-            <strong id="goodweGridPower">--</strong>
-          </div>
-        </div>
-        <div class="energy-divider"></div>
-        <div class="energy-surplus">
-          <span data-i18n="energy.availableSurplus"></span>
-          <strong id="goodweAvailableSurplus">--</strong>
-        </div>
-        <div id="goodweSmartLoads" class="smart-loads"></div>
-      </section>
-
-      <section class="card energy-card energy-temperature-card">
-        <h2><span class="energy-icon">🌡</span> <span data-i18n="energy.inverterTemperature"></span></h2>
-        <div id="goodweTemperature" class="energy-main-value">--</div>
-      </section>
     </section>
 
     <section class="card">

@@ -6,8 +6,8 @@
     "locale": "en-GB"
   },
   "app": {
-    "title": "Pool and Garden Lights",
-    "dashboardTitle": "🏊 Pool and Garden Lights",
+    "title": "Miran Energy Manager",
+    "dashboardTitle": "⚡ Miran Energy Manager",
     "meta": "{version} · server on port {port}"
   },
   "common": {
@@ -17,7 +17,10 @@
   },
   "nav": {
     "dashboard": "← Dashboard",
-    "statistics": "📊 Statistics",
+    "viewer": "← Viewer",
+    "weather": "🌤 Weather",
+    "history": "📈 History",
+    "statistics": "📊 Report",
     "eventLog": "📜 Event Log",
     "refreshRelays": "Refresh relays"
   },
@@ -57,14 +60,29 @@
     }
   },
   "temperature": {
-    "title": "🌡 Temperatures",
+    "title": "🌡 Pool Temperature",
     "water": "💧 Water",
-    "outside": "🌤 Outside",
     "communicationStatus": "Communication status",
     "status": {
-      "online": "🟢 Both thermometers online",
+      "online": "🟢 Thermometer online",
       "partial": "🟡 One thermometer offline",
-      "offline": "🔴 Both thermometers offline"
+      "offline": "🔴 Thermometer offline"
+    }
+  },
+  "weather": {
+    "title": "🌤 Weather",
+    "communicationStatus": "Sensor communication status",
+    "location": "Location: {location}",
+    "placeholder": "--",
+    "metrics": {
+      "temperature": "Temperature",
+      "humidity": "Humidity"
+    },
+    "status": {
+      "online": "🟢 Weather sensors online",
+      "partial": "🟡 Some weather sensors offline",
+      "offline": "🔴 Weather sensors offline",
+      "unconfigured": "No weather sensors configured"
     }
   },
   "solar": {
@@ -80,6 +98,9 @@
     "temperatureCheckInterval": "Temperature check interval (minutes)",
     "earlyCompletionTemperature": "Early completion temperature",
     "earlyCompletionConfirmation": "Confirmation time (minutes)",
+    "minimumPvProduction": "Minimum PV production for heating (W)",
+    "pvRunningCheckInterval": "PV running check interval (minutes)",
+    "pvConfirmationDelay": "PV confirmation delay (minutes)",
     "saveAutomation": "Save solar automation",
     "enable": "Enable",
     "disable": "Disable",
@@ -101,7 +122,8 @@
       "heatingAlreadyRunning": "Heating already running",
       "maintainingTarget": "Maintaining target temperature...",
       "earlyCompletionTimer": "Early completion timer:\n{minutes} min remaining",
-      "completedEarly": "Automation completed early"
+      "completedEarly": "Automation completed early",
+      "pvInsufficientConfirmation": "⚠ Produzione FV insufficiente\n\nSecondo controllo alle {time}"
     },
     "messageMap": {
       "Automation disabled": "Automation disabled",
@@ -113,10 +135,14 @@
       "Next temperature check at {time}": "Next temperature check at {time}",
       "Heating already running": "Heating already running",
       "Maintaining target temperature...": "Maintaining target temperature...",
-      "Automation completed early": "Automation completed early"
+      "Automation completed early": "Automation completed early",
+      "⚠ Produzione FV insufficiente\n\nSecondo controllo alle {time}": "⚠ Produzione FV insufficiente\n\nSecondo controllo alle {time}"
     }
   },
   "energy": {
+    "dashboardTitle": "⚡ Miran Energy Manager",
+    "dashboardSubtitle": "Real-time energy",
+    "dashboardRefresh": "Automatic refresh every 60 seconds",
     "houseConsumption": "House Consumption",
     "normalLoads": "Normal Loads",
     "backupLoads": "Backup Loads",
@@ -124,6 +150,7 @@
     "pvProduction": "PV Production",
     "house": "House",
     "battery": "Battery",
+    "batteryTemperature": "Battery temperature",
     "gridExchange": "Grid Import / Export",
     "gridSubtitle": "Import / Export",
     "availableSurplus": "Available Surplus",
@@ -204,12 +231,38 @@
     "ko": "KO"
   },
   "statistics": {
-    "pageTitle": "Device statistics",
-    "title": "📊 Statistics",
+    "pageTitle": "Report",
+    "title": "📊 Report",
     "today": "Today",
     "season": "Season",
     "total": "Total",
     "starts": "Starts"
+  },
+  "history": {
+    "pageTitle": "History",
+    "title": "📈 History",
+    "periods": {
+      "24h": "Last 24 hours",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "12m": "Last 12 months"
+    },
+    "locations": {
+      "compare": "Compare"
+    },
+    "metrics": {
+      "temperature": "Temperature",
+      "humidity": "Humidity"
+    },
+    "todayMin": "Today min",
+    "todayMax": "Today max",
+    "periodMin": "Period min",
+    "periodMax": "Period max",
+    "graphTitle": "Temperature graph",
+    "graphHint": "Mouse wheel to zoom, drag to pan, hover for exact values.",
+    "showGraph": "📈 Show graph",
+    "hideGraph": "Hide graph",
+    "noData": "No historical data for this selection yet."
   },
   "events": {
     "pageTitle": "Event Log",

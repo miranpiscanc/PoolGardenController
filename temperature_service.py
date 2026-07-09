@@ -46,10 +46,14 @@ class TemperatureService:
             sensors = {key: dict(value) for key, value in self._state.items()}
         online_count = sum(1 for sensor in sensors.values() if sensor.get("online"))
         total = len(sensors)
-        if online_count == total:
-            communication = {"status": "online", "label": "Both thermometers online"}
+        if total == 0:
+            communication = {"status": "offline", "label": "No thermometer configured"}
+        elif online_count == total:
+            label = "Thermometer online" if total == 1 else "Both thermometers online"
+            communication = {"status": "online", "label": label}
         elif online_count == 0:
-            communication = {"status": "offline", "label": "Both thermometers offline"}
+            label = "Thermometer offline" if total == 1 else "Both thermometers offline"
+            communication = {"status": "offline", "label": label}
         else:
             communication = {"status": "partial", "label": "One thermometer offline"}
         last_update = max(
@@ -141,11 +145,5 @@ DEFAULT_TEMPERATURE_SENSORS: Dict[str, Dict[str, object]] = {
         "icon": "💧",
         "url": "http://192.168.200.112:54200/values.xml",
         "sensor_id": 216
-    },
-    "outside": {
-        "label": "Outside",
-        "icon": "🌤",
-        "url": "http://192.168.200.111:54200/values.xml",
-        "sensor_id": 215
     }
 }

@@ -6,8 +6,8 @@
     "locale": "it-IT"
   },
   "app": {
-    "title": "Piscina e luci giardino",
-    "dashboardTitle": "🏊 Piscina e luci giardino",
+    "title": "Miran Energy Manager",
+    "dashboardTitle": "⚡ Miran Energy Manager",
     "meta": "{version} · server su porta {port}"
   },
   "common": {
@@ -17,7 +17,10 @@
   },
   "nav": {
     "dashboard": "← Dashboard",
-    "statistics": "📊 Statistiche",
+    "viewer": "← Viewer",
+    "weather": "🌤 Meteo",
+    "history": "📈 Storico",
+    "statistics": "📊 Report",
     "eventLog": "📜 Registro eventi",
     "refreshRelays": "Aggiorna relè"
   },
@@ -57,14 +60,29 @@
     }
   },
   "temperature": {
-    "title": "🌡 Temperature",
+    "title": "🌡 Temperatura piscina",
     "water": "💧 Acqua",
-    "outside": "🌤 Esterna",
     "communicationStatus": "Stato comunicazione",
     "status": {
-      "online": "🟢 Entrambi i termometri online",
+      "online": "🟢 Termometro online",
       "partial": "🟡 Un termometro offline",
-      "offline": "🔴 Entrambi i termometri offline"
+      "offline": "🔴 Termometro offline"
+    }
+  },
+  "weather": {
+    "title": "🌤 Meteo",
+    "communicationStatus": "Stato comunicazione sensori",
+    "location": "Località: {location}",
+    "placeholder": "--",
+    "metrics": {
+      "temperature": "Temperatura",
+      "humidity": "Umidità"
+    },
+    "status": {
+      "online": "🟢 Sensori meteo online",
+      "partial": "🟡 Alcuni sensori meteo offline",
+      "offline": "🔴 Sensori meteo offline",
+      "unconfigured": "Nessun sensore meteo configurato"
     }
   },
   "solar": {
@@ -80,6 +98,9 @@
     "temperatureCheckInterval": "Intervallo controllo temperatura (minuti)",
     "earlyCompletionTemperature": "Temperatura completamento anticipato",
     "earlyCompletionConfirmation": "Tempo conferma (minuti)",
+    "minimumPvProduction": "Produzione FV minima per riscaldamento (W)",
+    "pvRunningCheckInterval": "Intervallo controllo FV in funzione (minuti)",
+    "pvConfirmationDelay": "Ritardo conferma FV (minuti)",
     "saveAutomation": "Salva automazione solare",
     "enable": "Attiva",
     "disable": "Disattiva",
@@ -101,7 +122,8 @@
       "heatingAlreadyRunning": "Riscaldamento già in funzione",
       "maintainingTarget": "Mantenimento temperatura obiettivo...",
       "earlyCompletionTimer": "Timer completamento anticipato:\n{minutes} min rimanenti",
-      "completedEarly": "Automazione completata in anticipo"
+      "completedEarly": "Automazione completata in anticipo",
+      "pvInsufficientConfirmation": "⚠ Produzione FV insufficiente\n\nSecondo controllo alle {time}"
     },
     "messageMap": {
       "Automation disabled": "Automazione disabilitata",
@@ -113,10 +135,14 @@
       "Next temperature check at {time}": "Prossimo controllo temperatura alle {time}",
       "Heating already running": "Riscaldamento già in funzione",
       "Maintaining target temperature...": "Mantenimento temperatura obiettivo...",
-      "Automation completed early": "Automazione completata in anticipo"
+      "Automation completed early": "Automazione completata in anticipo",
+      "⚠ Produzione FV insufficiente\n\nSecondo controllo alle {time}": "⚠ Produzione FV insufficiente\n\nSecondo controllo alle {time}"
     }
   },
   "energy": {
+    "dashboardTitle": "⚡ Miran Energy Manager",
+    "dashboardSubtitle": "Energia in tempo reale",
+    "dashboardRefresh": "Aggiornamento automatico ogni 60 secondi",
     "houseConsumption": "Consumo Casa",
     "normalLoads": "Carichi Normali",
     "backupLoads": "Carichi Backup",
@@ -124,6 +150,7 @@
     "pvProduction": "Produzione FV",
     "house": "Casa",
     "battery": "Batteria",
+    "batteryTemperature": "Temperatura batteria",
     "gridExchange": "Scambio con la rete",
     "gridSubtitle": "Import / Export",
     "availableSurplus": "Surplus Disponibile",
@@ -204,12 +231,38 @@
     "ko": "KO"
   },
   "statistics": {
-    "pageTitle": "Statistiche dispositivi",
-    "title": "📊 Statistiche",
+    "pageTitle": "Report",
+    "title": "📊 Report",
     "today": "Oggi",
     "season": "Stagione",
     "total": "Totale",
     "starts": "Avvii"
+  },
+  "history": {
+    "pageTitle": "Storico",
+    "title": "📈 Storico",
+    "periods": {
+      "24h": "Ultime 24 ore",
+      "7d": "Ultimi 7 giorni",
+      "30d": "Ultimi 30 giorni",
+      "12m": "Ultimi 12 mesi"
+    },
+    "locations": {
+      "compare": "Confronta"
+    },
+    "metrics": {
+      "temperature": "Temperatura",
+      "humidity": "Umidità"
+    },
+    "todayMin": "Min oggi",
+    "todayMax": "Max oggi",
+    "periodMin": "Min periodo",
+    "periodMax": "Max periodo",
+    "graphTitle": "Grafico temperatura",
+    "graphHint": "Rotella per zoom, trascina per spostare, passa sopra per i valori esatti.",
+    "showGraph": "📈 Mostra grafico",
+    "hideGraph": "Nascondi grafico",
+    "noData": "Nessun dato storico per questa selezione."
   },
   "events": {
     "pageTitle": "Registro eventi",

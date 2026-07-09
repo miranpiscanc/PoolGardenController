@@ -15,7 +15,7 @@
       </div>
       <div class="header-actions">
         <div id="languageSelector" class="language-selector"></div>
-        <a class="button-link" href="/" data-i18n="nav.dashboard"></a>
+        <a class="button-link" href="{{ back_href|default('/') }}" data-i18n="{{ back_i18n|default('nav.dashboard') }}"></a>
       </div>
     </header>
 

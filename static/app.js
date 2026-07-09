@@ -44,6 +44,10 @@ function applyTranslations() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     el.textContent = t(el.dataset.i18n);
   });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    el.title = t(el.dataset.i18nTitle);
+    el.setAttribute('aria-label', t(el.dataset.i18nTitle));
+  });
   const titleKey = document.querySelector('title')?.dataset.i18n;
   if (titleKey) document.title = t(titleKey);
   renderLanguageSelector();
@@ -128,6 +132,32 @@ function fmtPower(value) {
   const absolute = Math.abs(number);
   if (absolute < 1000) return sign + Math.round(absolute) + ' W';
   return sign + (absolute / 1000).toFixed(2) + ' kW';
+}
+
+function gridDirectionLabel(value) {
+  const number = numericValue(value);
+  if (number === null) return '--';
+  if (number > 0) return '🟢 ⬆ Esportazione';
+  if (number < 0) return '🔴 ⬇ Prelievo';
+  return '⚪ Bilanciato';
+}
+
+function batteryPowerLabel(value) {
+  const number = numericValue(value);
+  if (number === null) return '--';
+  return fmtPower(Math.abs(number));
+}
+
+function batteryDirectionLabel(value) {
+  const mode = String(value || '').trim().toLowerCase();
+  if (mode === 'charge') return '⬇ Carica';
+  if (mode === 'discharge') return '⬆ Scarica';
+  if (mode === 'idle') return '⚪ Inattiva';
+  return '--';
+}
+
+function batteryTemperatureLabel(value) {
+  return fmtCelsius(value);
 }
 
 function fmtPercent(value) {
@@ -270,6 +300,7 @@ async function refresh() {
     if (confirmedRelay(pump.active) || pumpDisplayCache.bar === null) pumpDisplayCache.bar = pumpProgress(pump);
     document.getElementById('bar').style.width = pumpDisplayCache.bar + '%';
     renderTemperatures(s);
+    renderWeather(s);
     renderSolarHeating(s);
     renderGoodWeDashboard(s);
     renderTelegramNotifications(s);
@@ -298,7 +329,6 @@ function renderTemperatures(s) {
   const tData = s.temperatures || {};
   const sensors = tData.sensors || {};
   renderTemperatureValue('waterTemperature', sensors.water);
-  renderTemperatureValue('outsideTemperature', sensors.outside);
   const last = document.getElementById('temperatureLastUpdate');
   if (last) last.textContent = fmtTime(tData.last_update);
   const comm = document.getElementById('temperatureCommunication');
@@ -315,6 +345,52 @@ function renderTemperatures(s) {
     comm.className = 'pill bad';
   } else {
     comm.textContent = t('common.loading');
+    comm.className = 'pill gray';
+  }
+}
+
+function fmtWeatherMetric(metric) {
+  const number = numericValue(metric && metric.value);
+  if (number === null) return '--';
+  const unit = metric.unit || '';
+  return number.toFixed(1) + (unit ? ` ${unit}` : '');
+}
+
+function weatherMetricLabel(key, metric) {
+  return optionalT(`weather.metrics.${key}`) || (metric && metric.label) || key;
+}
+
+function renderWeather(s) {
+  const data = s.weather || {};
+  const root = document.getElementById('weatherLocations');
+  if (root) {
+    const locations = data.locations || {};
+    root.innerHTML = Object.entries(locations).map(([locationKey, location]) => {
+      const metrics = Object.entries((location || {}).metrics || {}).map(([metricKey, metric]) => {
+        const offline = !metric.online && !metric.placeholder;
+        const value = metric.placeholder ? t('weather.placeholder') : (offline ? t('status.offline') : fmtWeatherMetric(metric));
+        const cls = offline ? ' class="offline"' : '';
+        return `<div class="weather-metric"><span>${esc(weatherMetricLabel(metricKey, metric))}</span><strong${cls}>${esc(value)}</strong></div>`;
+      }).join('');
+      return `<section class="weather-location"><h3>${esc(t('weather.location', { location: location.label || locationKey }))}</h3><div class="weather-metrics">${metrics}</div></section>`;
+    }).join('');
+  }
+  const last = document.getElementById('weatherLastUpdate');
+  if (last) last.textContent = fmtTime(data.last_update);
+  const comm = document.getElementById('weatherCommunication');
+  if (!comm) return;
+  const status = (data.communication || {}).status;
+  if (status === 'online') {
+    comm.textContent = t('weather.status.online');
+    comm.className = 'pill ok';
+  } else if (status === 'partial') {
+    comm.textContent = t('weather.status.partial');
+    comm.className = 'pill warn';
+  } else if (status === 'offline') {
+    comm.textContent = t('weather.status.offline');
+    comm.className = 'pill bad';
+  } else {
+    comm.textContent = t('weather.status.unconfigured');
     comm.className = 'pill gray';
   }
 }
@@ -372,12 +448,19 @@ function renderSolarHeating(s) {
   if (earlyTemperature && document.activeElement !== earlyTemperature) earlyTemperature.value = Number(solar.early_completion_temperature || 31).toFixed(1);
   const earlyConfirmation = document.getElementById('solarEarlyCompletionConfirmation');
   if (earlyConfirmation && document.activeElement !== earlyConfirmation) earlyConfirmation.value = Number(solar.early_completion_confirmation_minutes || 120);
+  const minimumPv = document.getElementById('solarMinimumPvProduction');
+  if (minimumPv && document.activeElement !== minimumPv) minimumPv.value = Number(solar.minimum_pv_production_watts || 3000);
+  const pvRunningInterval = document.getElementById('solarPvRunningCheckInterval');
+  if (pvRunningInterval && document.activeElement !== pvRunningInterval) pvRunningInterval.value = Number(solar.pv_running_check_interval_minutes || 30);
+  const pvConfirmationDelay = document.getElementById('solarPvConfirmationDelay');
+  if (pvConfirmationDelay && document.activeElement !== pvConfirmationDelay) pvConfirmationDelay.value = Number(solar.pv_confirmation_delay_minutes || 15);
 }
 
 function renderGoodWeDashboard(s) {
   const goodwe = s.goodwe || {};
   const pvProduction = numericValue(goodwe.pv_production);
   const houseConsumption = numericValue(goodwe.house_consumption);
+  const batteryPower = goodwe.pbattery1 ?? goodwe.battery_power;
   const availableSurplus = pvProduction === null || houseConsumption === null
     ? null
     : Math.max(0, pvProduction - houseConsumption);
@@ -388,7 +471,12 @@ function renderGoodWeDashboard(s) {
   setText('goodwePvProduction', fmtPower(goodwe.pv_production));
   setText('goodweManagerHouse', fmtPower(goodwe.house_consumption));
   setText('goodweBatterySoc', fmtPercent(goodwe.battery_soc));
-  setText('goodweGridPower', fmtPower(goodwe.grid_power));
+  setText('goodweBatteryDirection', batteryDirectionLabel(goodwe.battery_mode_label));
+  setText('goodweBatteryPower', batteryPowerLabel(batteryPower));
+  setText('goodweBatteryTemperature', batteryTemperatureLabel(goodwe.battery_temperature));
+  const gridPower = numericValue(goodwe.grid_power);
+  setText('goodweGridPower', fmtPower(gridPower === null ? null : Math.abs(gridPower)));
+  setText('goodweGridDirection', gridDirectionLabel(goodwe.grid_power));
   setText('goodweAvailableSurplus', fmtPower(availableSurplus));
   setText('goodweTemperature', fmtCelsius(goodwe.temperature));
   renderSmartLoadsState('enabled');
@@ -576,6 +664,9 @@ async function saveSolarHeatingConfig(extra = {}) {
     temperature_check_interval_seconds: Math.max(5, Math.min(60, Math.round(parseFloat(document.getElementById('solarTemperatureCheckInterval').value || '15') / 5) * 5)) * 60,
     early_completion_temperature: parseFloat(document.getElementById('solarEarlyCompletionTemperature').value),
     early_completion_confirmation_minutes: Math.max(30, Math.min(240, Math.round(parseFloat(document.getElementById('solarEarlyCompletionConfirmation').value || '120')))),
+    minimum_pv_production_watts: Math.max(0, Math.round(parseFloat(document.getElementById('solarMinimumPvProduction').value || '3000'))),
+    pv_running_check_interval_minutes: Math.max(1, Math.round(parseFloat(document.getElementById('solarPvRunningCheckInterval').value || '30'))),
+    pv_confirmation_delay_minutes: Math.max(1, Math.round(parseFloat(document.getElementById('solarPvConfirmationDelay').value || '15'))),
     ...extra
   };
   await api('/api/solar_heating/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -601,6 +692,7 @@ async function refreshCurrentPage() {
   if (document.getElementById('relayCards')) return refresh();
   if (document.getElementById('statisticsCards')) return refreshStatistics();
   if (document.getElementById('eventLog')) return refreshEvents();
+  if (document.getElementById('historyPage') && typeof refreshHistory === 'function') return refreshHistory();
 }
 
 async function startPage() {

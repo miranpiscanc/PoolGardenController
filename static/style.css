@@ -4,7 +4,11 @@ body{margin:0}
 .hero{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:8px 0 18px}
 .hero h1{margin:0;font-size:clamp(26px,5vw,42px)}
 .hero p{margin:4px 0;color:#5b6870}
+.hero-subtitle{font-size:16px;font-weight:700}
+.hero-readonly{display:block;color:#43515a;font-size:13px;font-weight:800;margin-top:2px}
+.hero-refresh{display:block;color:#7d8a92;font-size:13px}
 .header-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.header-meta{width:100%;text-align:right;color:#7d8a92;font-size:13px}
 .language-selector{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.6);border:1px solid #d7e0e6;border-radius:999px;padding:4px}
 .language-option{display:inline-flex;align-items:center;gap:4px;border:0;border-radius:999px;padding:6px 8px;background:transparent;color:#43515a}
 .language-option.active{background:#122;color:white}
@@ -41,7 +45,7 @@ button.secondary{background:#f6f6f6;color:#333}
 .password-field{display:flex;gap:8px}
 .password-field input{min-width:0;flex:1}
 .telegram-status{margin-top:10px;font-weight:700}
-.nav-actions{margin:-6px 0 16px}
+.nav-actions{margin:0 0 16px}
 .buttons{margin-top:16px}
 .timeline{height:16px;background:#e8edf1;border-radius:999px;overflow:hidden;margin:16px 0 8px}
 .bar{height:100%;width:0%;background:linear-gradient(90deg,#39a66a,#7ccf91)}
@@ -51,6 +55,14 @@ button.secondary{background:#f6f6f6;color:#333}
 .temperature-value.offline{color:#a0192a;font-size:24px}
 .temperature-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0;padding-top:12px}
 .temperature-status{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0 0;padding-top:12px}
+.weather-card{border:1px solid #dcebf3}
+.weather-locations{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+.weather-location{background:#f6f9fb;border-radius:12px;padding:12px}
+.weather-location h3{margin:0 0 10px;font-size:20px}
+.weather-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.weather-metric span{display:block;color:#5b6870;font-size:13px}
+.weather-metric strong{display:block;font-size:28px;margin-top:3px;overflow-wrap:anywhere}
+.weather-metric strong.offline{color:#a0192a;font-size:20px}
 .solar-card{border:1px solid #ffe9a8}
 .solar-status-badge{display:inline-block;margin-top:2px}
 .solar-status-message{margin-top:8px;white-space:pre-line;font-weight:700}
@@ -58,7 +70,7 @@ button.secondary{background:#f6f6f6;color:#333}
 .solar-summary div{background:#fffaf0;border-radius:12px;padding:10px}
 .solar-summary span{display:block;color:#5b6870;font-size:13px}
 .solar-summary strong{display:block;font-size:20px;margin-top:3px}
-.energy-dashboard{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch}
+.energy-dashboard{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch;margin-bottom:16px}
 .energy-card{margin-bottom:16px}
 .energy-card h2{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 .energy-icon{font-size:28px;line-height:1}
@@ -69,12 +81,32 @@ button.secondary{background:#f6f6f6;color:#333}
 .energy-loads span,.energy-metrics span,.energy-surplus span{display:block;color:#5b6870;font-size:13px}
 .energy-metrics small{display:block;color:#7d8a92;font-size:12px;margin-top:2px}
 .energy-loads strong,.energy-metrics strong{display:block;font-size:22px;margin-top:4px}
+.grid-direction,.battery-direction{display:block;margin-top:6px;font-style:normal;font-weight:800;color:#43515a}
+.battery-temperature-label{display:block;margin-top:10px;font-style:normal;font-weight:800;color:#5b6870}
+.battery-temperature-value{margin-top:2px}
 .energy-surplus strong{display:block;font-size:64px;font-weight:900;line-height:1;margin-top:8px;letter-spacing:0}
 .smart-loads{margin-top:14px;font-weight:850;font-size:18px}
 .smart-loads.enabled{color:#137034}
 .smart-loads.waiting{color:#8a6500}
 .smart-loads.disabled{color:#a0192a}
 .energy-temperature-card{grid-column:1 / -1}
+.viewer-wrap{max-width:1100px}
+.viewer-hero{align-items:flex-start}
+.viewer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.viewer-card{margin-bottom:0}
+.viewer-wide{grid-column:1 / -1}
+.viewer-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.viewer-metrics div{background:#f6f9fb;border-radius:12px;padding:10px;min-width:0}
+.viewer-metrics span{display:block;color:#5b6870;font-size:13px}
+.viewer-metrics strong{display:block;font-size:22px;margin-top:4px;overflow-wrap:anywhere}
+.viewer-metrics em{display:block;margin-top:4px;font-style:normal;font-weight:800;color:#43515a}
+.viewer-readonly-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:16px}
+.viewer-readonly-grid div{background:#f6f9fb;border-radius:12px;padding:10px}
+.viewer-readonly-grid span{display:block;color:#5b6870;font-size:13px}
+.viewer-readonly-grid strong{display:block;font-size:24px;margin-top:4px}
+.viewer-last-goodwe{margin-top:8px;font-weight:700}
+.viewer-statistics{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.viewer-stat-card{margin-bottom:0;box-shadow:none;border:1px solid #edf1f4}
 .diag{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;font-size:14px}
 .relay-title{display:flex;gap:10px;align-items:center}
 .relay-title .icon{font-size:26px}
@@ -87,10 +119,30 @@ button.secondary{background:#f6f6f6;color:#333}
 .event-row{display:grid;grid-template-columns:1fr 1.4fr;gap:14px;border-bottom:1px solid #edf1f4;padding:0 0 10px}
 .event-row:last-child{border-bottom:0;padding-bottom:0}
 .event-row span{display:block;color:#5b6870;font-size:14px;margin-top:2px}
+.history-controls-card{display:grid;gap:14px}
+.history-button-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.history-option{min-height:58px;font-size:18px}
+.history-option.active{background:#122;color:white;border-color:#122}
+.history-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.history-stat-card{margin-bottom:0}
+.history-metric-block{border-top:1px solid #edf1f4;margin-top:14px;padding-top:14px}
+.history-metric-block:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.history-metric-block h3{margin:0 0 10px;font-size:18px}
+.history-stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.history-stat-grid div{background:#f6f9fb;border-radius:12px;padding:10px}
+.history-stat-grid span{display:block;color:#5b6870;font-size:13px}
+.history-stat-grid strong{display:block;font-size:24px;margin-top:4px}
+.history-graph-card{position:relative}
+.history-graph-panel{position:relative;margin-top:16px;overflow:hidden;border:1px solid #edf1f4;border-radius:12px;background:white}
+.history-graph-panel.hidden,.history-tooltip.hidden{display:none}
+#historyChart{display:block;width:100%;height:380px;touch-action:none;cursor:grab}
+#historyChart:active{cursor:grabbing}
+.history-tooltip{position:absolute;z-index:2;min-width:150px;background:#122;color:white;border-radius:8px;padding:8px 10px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.18);pointer-events:none}
 .footer{color:#5b6870;font-size:14px;margin:18px 0 6px}
 @media(max-width:560px){
   .hero{display:block}
   .header-actions{justify-content:flex-start;margin-top:10px}
+  .header-meta{text-align:left}
   .state{font-size:22px}
   .card{border-radius:18px}
   .pump-layout{grid-template-columns:1fr}
@@ -98,5 +150,9 @@ button.secondary{background:#f6f6f6;color:#333}
   .energy-dashboard{grid-template-columns:1fr}
   .energy-loads,.energy-metrics{grid-template-columns:1fr}
   .energy-main-value,.energy-surplus strong{font-size:48px}
+  .viewer-grid,.viewer-metrics{grid-template-columns:1fr}
+  .viewer-wide{grid-column:auto}
   .event-row{grid-template-columns:1fr}
+  .history-option{font-size:16px}
+  .history-stat-grid{grid-template-columns:1fr}
 }

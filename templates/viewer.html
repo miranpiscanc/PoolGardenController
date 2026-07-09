@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Miran Energy Manager Viewer</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap viewer-wrap">
+    <header class="hero viewer-hero">
+      <div>
+        <h1>⚡ Miran Energy Manager</h1>
+        <p class="hero-subtitle">Energia in tempo reale</p>
+        <small class="hero-readonly">🔒 Sola lettura</small>
+        <small id="viewerRefreshLine" class="hero-refresh">Aggiornamento automatico ogni {{ refresh_seconds }} secondi</small>
+      </div>
+      <div id="viewerStatus" class="pill gray">Caricamento...</div>
+    </header>
+
+    <nav class="row gap nav-actions viewer-nav-actions">
+      <a class="button-link" href="#viewerWeatherCard">🌤 Meteo</a>
+      <a class="button-link viewer-token-link" href="/viewer/history">📈 Storico</a>
+      <a class="button-link viewer-token-link" href="/viewer/report">📊 Report</a>
+      <a class="button-link viewer-token-link" href="/viewer/event-log">📜 Registro eventi</a>
+    </nav>
+
+    <section class="energy-dashboard">
+      <section class="card energy-card energy-house-card">
+        <h2><span class="energy-icon">🏠</span> <span>Consumo Casa</span></h2>
+        <div id="viewerHouseConsumption" class="energy-main-value">--</div>
+        <div class="energy-divider"></div>
+        <div class="energy-loads">
+          <div>
+            <span>💡 Carichi Normali</span>
+            <strong id="viewerNormalLoads">--</strong>
+          </div>
+          <div>
+            <span>🔌 Carichi Backup</span>
+            <strong id="viewerBackupLoads">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card energy-card energy-manager-card">
+        <h2><span class="energy-icon">☀</span> <span>Gestione Energia</span></h2>
+        <div class="energy-metrics">
+          <div><span>Produzione FV</span><strong id="viewerPvProduction">--</strong></div>
+          <div><span>Casa</span><strong id="viewerManagerHouse">--</strong></div>
+          <div>
+            <span>🔋 Batteria</span>
+            <strong id="viewerBatterySoc">--</strong>
+            <em id="viewerBatteryDirection" class="battery-direction">--</em>
+            <strong id="viewerBatteryPower" class="battery-power-value">--</strong>
+            <em class="battery-temperature-label">🌡 Batteria</em>
+            <strong id="viewerBatteryTemperature" class="battery-temperature-value">--</strong>
+          </div>
+          <div>
+            <span>⚡ Scambio con la rete</span>
+            <small>Import / Export</small>
+            <strong id="viewerGridPower">--</strong>
+            <em id="viewerGridDirection" class="grid-direction">--</em>
+          </div>
+        </div>
+        <div class="energy-divider"></div>
+        <div class="energy-surplus">
+          <span>Surplus Disponibile</span>
+          <strong id="viewerAvailableSurplus">--</strong>
+        </div>
+        <div id="viewerGoodweStatus" class="smart-loads"></div>
+      </section>
+
+      <section class="card energy-card energy-temperature-card">
+        <h2><span class="energy-icon">🌡</span> <span>Temperatura Inverter</span></h2>
+        <div id="viewerInverterTemperature" class="energy-main-value">--</div>
+        <div class="muted viewer-last-goodwe">Ultimo aggiornamento GoodWe: <span id="viewerGoodweUpdate">--</span></div>
+      </section>
+    </section>
+
+    <section class="card pump-card">
+      <div class="pump-layout">
+        <div class="pump-controls">
+          <div class="row between">
+            <div>
+              <h2>🏊 Pompa piscina</h2>
+              <div id="viewerPumpState" class="state unknown">--</div>
+            </div>
+            <div class="mode" id="viewerPumpMode">--</div>
+          </div>
+
+          <div class="timeline">
+            <div id="viewerPumpBar" class="bar"></div>
+          </div>
+          <div id="viewerPumpInfo" class="muted">Spegnimento previsto: --:--</div>
+
+          <div class="viewer-readonly-grid">
+            <div>
+              <span>🔥 Riscaldatore</span>
+              <strong id="viewerHeaterState">--</strong>
+            </div>
+          </div>
+        </div>
+
+        <section class="temperature-card pump-temperature-card">
+          <h2>🌡 Temperatura piscina</h2>
+          <div class="temperature-grid">
+            <div>
+              <div class="muted">💧 Acqua</div>
+              <div id="viewerWaterTemperature" class="temperature-value">--</div>
+            </div>
+          </div>
+          <div class="temperature-status">
+            <div class="muted">Stato comunicazione</div>
+            <div id="viewerTemperatureCommunication" class="pill gray">Caricamento...</div>
+          </div>
+          <div class="temperature-footer">
+            <div class="muted">Ultimo aggiornamento</div>
+            <div id="viewerTemperatureLastUpdate">--:--:--</div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="viewerWeatherCard" class="card weather-card">
+      <h2>🌤 Meteo</h2>
+      <div id="viewerWeatherLocations" class="weather-locations"></div>
+      <div class="temperature-status">
+        <div class="muted">Stato comunicazione sensori</div>
+        <div id="viewerWeatherCommunication" class="pill gray">Caricamento...</div>
+      </div>
+      <div class="temperature-footer">
+        <div class="muted">Ultimo aggiornamento</div>
+        <div id="viewerWeatherLastUpdate">--:--:--</div>
+      </div>
+    </section>
+
+    <section class="card solar-card">
+      <div class="row between">
+        <div>
+          <h2>☀ Automazione riscaldamento solare</h2>
+          <div id="viewerSolarHeatingState" class="pill gray solar-status-badge">--</div>
+          <div id="viewerSolarHeatingMessage" class="solar-status-message muted">--</div>
+        </div>
+      </div>
+
+      <div class="solar-summary">
+        <div>
+          <span>Temperatura acqua attuale</span>
+          <strong id="viewerSolarWaterTemperature">--</strong>
+        </div>
+        <div>
+          <span>Soglia configurata</span>
+          <strong id="viewerSolarThreshold">--</strong>
+        </div>
+        <div>
+          <span>Orario operativo</span>
+          <strong id="viewerSolarOperatingTime">08:00 → 17:00</strong>
+        </div>
+        <div>
+          <span>Riscaldamento oggi</span>
+          <strong id="viewerSolarHeatingToday">0h 00m</strong>
+        </div>
+        <div>
+          <span>Prossimo controllo temperatura</span>
+          <strong id="viewerSolarNextCheck">--</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="relay-title">
+        <span class="icon">💡</span>
+        <div>
+          <h2>Luci giardino</h2>
+          <div class="muted">Giardino</div>
+        </div>
+      </div>
+      <div id="viewerGardenLights" class="state unknown">--</div>
+    </section>
+
+    <section class="card">
+      <h2>📊 Report</h2>
+      <div id="viewerStatisticsCards" class="viewer-statistics"></div>
+    </section>
+
+    <section class="card small">
+      <h2>Generale</h2>
+      <div class="viewer-metrics">
+        <div><span>Versione</span><strong id="viewerVersion">--</strong></div>
+        <div><span>Ora corrente</span><strong id="viewerCurrentTime">--</strong></div>
+        <div><span>Ultimo aggiornamento dashboard</span><strong id="viewerLastDashboardUpdate">--</strong></div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/viewer.js"></script>
+</body>
+</html>

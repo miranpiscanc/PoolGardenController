@@ -40,13 +40,74 @@
     "forced_stop_time": "17:00",
     "temperature_check_interval_seconds": 900,
     "early_completion_temperature": 31.0,
-    "early_completion_confirmation_minutes": 120
+    "early_completion_confirmation_minutes": 120,
+    "minimum_pv_production_watts": 3000,
+    "pv_running_check_interval_minutes": 30,
+    "pv_confirmation_delay_minutes": 15
   },
   "notifications": {
     "telegram": {
       "enabled": false,
       "bot_token": "",
       "chat_id": ""
+    }
+  },
+  "viewer": {
+    "enabled": true,
+    "token": "",
+    "refresh_seconds": 30
+  },
+  "history": {
+    "enabled": true,
+    "sample_seconds": 300
+  },
+  "weather": {
+    "poll_seconds": 30,
+    "timeout_seconds": 5,
+    "retry_count": 2,
+    "sources": {
+      "opicina_hwg_ste": {
+        "label": "Opicina HWg-STE",
+        "type": "hwg_ste",
+        "address": "http://192.168.10.122:54200",
+        "path": "/values.xml"
+      },
+      "cesclans_hwg_ste": {
+        "label": "Cesclans HWg-STE",
+        "type": "hwg_ste",
+        "address": "http://192.168.200.111:54200",
+        "path": "/values.xml"
+      }
+    },
+    "locations": {
+      "opicina": {
+        "label": "Opicina",
+        "metrics": {
+          "temperature": {
+            "label": "Temperature",
+            "unit": "°C",
+            "source": "opicina_hwg_ste",
+            "sensor_id": 215
+          },
+          "humidity": {
+            "label": "Humidity",
+            "unit": "%",
+            "source": "opicina_hwg_ste",
+            "sensor_id": 216
+          }
+        }
+      },
+      "cesclans": {
+        "label": "Cesclans",
+        "metrics": {
+          "temperature": {
+            "label": "Temperature",
+            "unit": "°C",
+            "source": "cesclans_hwg_ste",
+            "sensor_id": 215
+          }
+        }
+      }
     }
   }
 }
