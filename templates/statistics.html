@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title data-i18n="statistics.pageTitle"></title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/static/apple-touch-icon-precomposed.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,6 +17,7 @@
       <div>
         <h1 data-i18n="statistics.title"></h1>
         <p id="appMeta" data-i18n="common.loading"></p>
+        <small class="hero-refresh"><span data-i18n="energy.dashboardRefresh"></span> · <span id="refreshCountdown"></span></small>
       </div>
       <div class="header-actions">
         <div id="languageSelector" class="language-selector"></div>

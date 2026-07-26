@@ -35,6 +35,8 @@ h2{margin:0 0 10px}
 .pill.ok{background:#e3f8e9;color:#137034}
 .pill.warn{background:#fff7d6;color:#8a6500}
 .pill.bad{background:#ffe6e8;color:#a0192a}
+.pill.info{background:#e8f2ff;color:#0b559f}
+.pill.orange{background:#ffeddc;color:#9a4b00}
 button,select,input,.button-link{font:inherit;border-radius:12px;border:1px solid #ccd6dd;padding:10px 12px}
 button,.button-link{cursor:pointer;background:#f3f7fa;font-weight:700;text-decoration:none;color:#122}
 button.on{background:#e5f8ea;color:#117236}
@@ -46,6 +48,24 @@ button.secondary{background:#f6f6f6;color:#333}
 .password-field input{min-width:0;flex:1}
 .telegram-status{margin-top:10px;font-weight:700}
 .nav-actions{margin:0 0 16px}
+.hidden{display:none!important}
+.portal-home{margin-bottom:16px}
+.portal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.portal-card{display:flex;align-items:flex-start;gap:14px;background:white;border:1px solid #dcebf3;border-radius:18px;padding:18px;text-decoration:none;color:#122;box-shadow:0 8px 28px rgba(20,45,60,.10)}
+.portal-card:hover{border-color:#b8d4e4;transform:translateY(-1px)}
+.portal-card h2{margin:0 0 6px}
+.portal-card p{margin:0 0 10px}
+.portal-icon{font-size:34px;line-height:1}
+.portal-section-nav .button-link{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.nav-icon{display:inline-block;font-size:1em;line-height:1;width:1.15em;text-align:center;flex:0 0 auto}
+.air-portal-content{flex:1;min-width:0}
+.air-portal-summary{display:flex;gap:8px 12px;flex-wrap:wrap;color:#43515a;font-size:14px;font-weight:750}
+.air-portal-summary strong{font-size:18px;color:#122}
+.air-portal-summary .air-on-count,.air-portal-summary .air-on-count strong{color:#137034}
+.air-portal-update{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #edf1f4;margin-top:10px;padding-top:9px;color:#7d8a92;font-size:12px}
+.air-portal-update strong{color:#43515a}
+.portal-section-nav .button-link.active{background:#122;color:white;border-color:#122}
+.portal-page{margin-bottom:16px}
 .buttons{margin-top:16px}
 .timeline{height:16px;background:#e8edf1;border-radius:999px;overflow:hidden;margin:16px 0 8px}
 .bar{height:100%;width:0%;background:linear-gradient(90deg,#39a66a,#7ccf91)}
@@ -63,6 +83,92 @@ button.secondary{background:#f6f6f6;color:#333}
 .weather-metric span{display:block;color:#5b6870;font-size:13px}
 .weather-metric strong{display:block;font-size:28px;margin-top:3px;overflow-wrap:anywhere}
 .weather-metric strong.offline{color:#a0192a;font-size:20px}
+.weather-forecast{margin-top:14px;padding-top:12px;border-top:1px solid #dfe8ed}
+.weather-forecast.offline{color:#a0192a;font-weight:700}
+.weather-forecast-title{color:#5b6870;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.weather-forecast-condition{display:flex;align-items:center;gap:9px;margin:7px 0;font-size:18px}
+.weather-forecast-condition>span{font-size:30px}
+.weather-forecast-details{display:grid;gap:5px;color:#43515a;font-size:14px;font-weight:650}
+.netatmo-card{border:1px solid #dcebf3}
+.netatmo-dashboard{display:grid;gap:16px;margin-top:12px}
+.netatmo-history{margin-top:20px;padding-top:18px;border-top:1px solid #e5edf2}
+.netatmo-history h3{margin:0 0 4px}
+.netatmo-history-panel{position:relative;margin-top:16px;padding:12px;border:1px solid #edf1f4;border-radius:12px;background:#fff}
+.netatmo-history-panel.hidden{display:none}
+.netatmo-history-panel canvas{display:block;width:100%;height:380px;margin-top:10px}
+.garden-timer{display:grid;grid-template-columns:minmax(150px,220px) auto;align-items:end;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid #e5edf2}
+.garden-timer label{margin:0}
+.garden-timer-status{grid-column:1/-1;min-height:20px}
+.garden-timer-status.active{color:#157347;font-weight:700}
+.garden-timer-status.warning,.garden-timer-warning{color:#9a4f00;font-weight:700}
+.garden-timer-warning{grid-column:1/-1;background:#fff3cd;border:1px solid #e6ba43;border-radius:8px;padding:8px}
+.garden-timer-warning.fault{background:#f8d7da;border-color:#d99;color:#842029}
+@media(max-width:600px){.garden-timer{grid-template-columns:1fr}.garden-timer-status{grid-column:1}}
+.netatmo-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.netatmo-summary-card{background:#f6f9fb;border:1px solid #edf1f4;border-radius:14px;padding:14px}
+.netatmo-summary-card h3{margin:0 0 10px;font-size:21px}
+.netatmo-summary-lines{display:grid;gap:7px;color:#43515a;font-weight:750}
+.netatmo-home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.netatmo-home-column{background:#f9fbfc;border:1px solid #edf1f4;border-radius:16px;padding:14px}
+.netatmo-home-column>h3{margin:0 0 14px;font-size:22px;letter-spacing:.02em}
+.netatmo-device-grid{display:grid;gap:12px}
+.netatmo-device-card{background:white;border:1px solid #e4edf2;border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(20,45,60,.06)}
+.netatmo-device-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.netatmo-device-head h4{margin:0;font-size:20px}
+.netatmo-device-subtitle{margin-top:3px;color:#7d8a92;font-size:12px;font-weight:700}
+.netatmo-device-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.netatmo-device-metric{background:#f6f9fb;border-radius:10px;padding:10px;min-width:0}
+.netatmo-device-metric span{display:block;color:#5b6870;font-size:13px}
+.netatmo-device-metric strong{display:block;font-size:21px;margin-top:3px;overflow-wrap:anywhere}
+.netatmo-device-metric strong.pill{display:inline-block;font-size:14px;margin-top:6px}
+.netatmo-device-footer{border-top:1px solid #edf1f4;margin-top:12px;padding-top:10px;color:#7d8a92;font-size:12px;font-weight:700}
+.air-page-header p{margin:4px 0 0}
+.air-groups{display:grid;gap:22px}
+.air-group>h2{font-size:24px;margin:0 0 12px}
+.air-device-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.air-device-card{position:relative;display:flex;flex-direction:column;margin-bottom:0;border:1px solid #e4edf2;overflow:visible;transition:border-color .2s,box-shadow .2s}
+.air-device-card.air-device-on{border-color:#a9dfba;box-shadow:0 8px 28px rgba(19,112,52,.13)}
+.air-device-card.air-device-off{border-color:#dce3e7}
+.air-device-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px}
+.air-device-head h3{margin:0;font-size:21px;line-height:1.2;overflow-wrap:anywhere}
+.air-device-head .pill{flex:0 0 auto;font-size:12px;padding:6px 9px}
+.air-room-temperature{background:linear-gradient(135deg,#edf7ff,#f6f9fb);border:1px solid #dcebf3;border-radius:16px;padding:15px;margin-bottom:14px;text-align:center}
+.air-room-temperature span{display:block;color:#5b6870;font-size:13px}
+.air-room-temperature strong{display:block;color:#0b559f;font-size:48px;font-weight:900;line-height:1.05;margin-top:5px;letter-spacing:-.03em}
+.air-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.air-metric{background:#f6f9fb;border-radius:10px;padding:10px;min-width:0}
+.air-metric span{display:block;color:#5b6870;font-size:12px}
+.air-metric strong{display:block;font-size:15px;margin-top:3px;overflow-wrap:anywhere}
+.air-error-metric{grid-column:1/-1}
+.air-error-metric.no-error{background:#e3f8e9;color:#137034}
+.air-error-metric.no-error span,.air-error-metric.no-error strong{color:#137034}
+.air-error-metric.has-error{background:#ffe6e8;border:1px solid #f4b9c0}
+.air-error-metric strong.has-error{color:#a0192a}
+.air-controls{display:grid;gap:12px;border:0;border-top:1px solid #edf1f4;margin:14px 0 0;padding:14px 0 0;min-width:0;overflow:visible}
+.air-control-group{display:grid;gap:7px;min-width:0;overflow:visible}
+.air-control-label{color:#5b6870;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.air-button-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(54px,1fr));gap:6px;min-width:0;overflow:visible}
+.air-controls button{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;position:relative;z-index:1;min-width:0;min-height:36px;background:#f3f7fa;color:#122;-webkit-text-fill-color:currentColor;visibility:visible;opacity:1;white-space:nowrap;line-height:1.15}
+.air-button-group button{width:100%;padding:8px 7px;font-size:12px}
+.air-controls .air-button-group button.active{background:#122;color:white;-webkit-text-fill-color:currentColor;border-color:#122}
+.air-power-button{min-height:40px;font-size:13px!important;font-weight:850}
+.air-controls .air-power-button.on.active{background:#16803c;color:white;border-color:#16803c}
+.air-controls .air-power-button.off.active{background:#aa1d2c;color:white;border-color:#aa1d2c}
+.air-temperature-control{display:grid;grid-template-columns:44px minmax(82px,1fr) 44px;gap:10px;align-items:center}
+.air-temperature-control button{width:44px;height:44px;padding:0;font-size:22px;line-height:1}
+.air-temperature-control strong{text-align:center;font-size:20px}
+.air-vane-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.air-vane-controls button{padding:8px;font-size:12px}
+.air-command-status{min-height:18px;margin-top:8px;font-size:12px;font-weight:750}
+.air-command-status.success{color:#137034}
+.air-command-status.error{color:#a0192a}
+.air-device-footer{display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #edf1f4;margin-top:auto;padding-top:10px;color:#8a969d;font-size:11px;text-align:right}
+.air-device-footer strong{font-weight:750;color:#6f7d85}
+.air-device-spinner{position:absolute;right:14px;top:62px;display:flex;align-items:center;gap:7px;background:white;border:1px solid #dcebf3;border-radius:999px;padding:6px 9px;color:#43515a;font-size:11px;font-weight:800;box-shadow:0 4px 14px rgba(20,45,60,.10)}
+.spinner{width:13px;height:13px;border:2px solid #d7e0e6;border-top-color:#0b559f;border-radius:50%;animation:air-spin .7s linear infinite}
+.air-device-card.is-busy{border-color:#8dbbd5}
+.air-device-card fieldset:disabled{opacity:.58}
+@keyframes air-spin{to{transform:rotate(360deg)}}
 .solar-card{border:1px solid #ffe9a8}
 .solar-status-badge{display:inline-block;margin-top:2px}
 .solar-status-message{margin-top:8px;white-space:pre-line;font-weight:700}
@@ -111,6 +217,7 @@ button.secondary{background:#f6f6f6;color:#333}
 .relay-title{display:flex;gap:10px;align-items:center}
 .relay-title .icon{font-size:26px}
 .relay-actions{display:flex;gap:8px;margin-top:14px}
+.heater-reason{display:inline-block;margin:8px 0 10px}
 .stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
 .stat-grid div{background:#f6f9fb;border-radius:12px;padding:10px}
 .stat-grid span{display:block;color:#5b6870;font-size:13px}
@@ -128,10 +235,14 @@ button.secondary{background:#f6f6f6;color:#333}
 .history-metric-block{border-top:1px solid #edf1f4;margin-top:14px;padding-top:14px}
 .history-metric-block:first-of-type{border-top:0;margin-top:0;padding-top:0}
 .history-metric-block h3{margin:0 0 10px;font-size:18px}
+.history-stat-section{margin-top:14px}
+.history-stat-section h4{margin:0 0 8px;font-size:16px}
 .history-stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .history-stat-grid div{background:#f6f9fb;border-radius:12px;padding:10px}
 .history-stat-grid span{display:block;color:#5b6870;font-size:13px}
 .history-stat-grid strong{display:block;font-size:24px;margin-top:4px}
+.history-stat-grid small{display:block;color:#5b6870;font-size:12px;margin-top:6px}
+.history-stat-grid .history-stat-empty{grid-column:1/-1;font-size:14px}
 .history-graph-card{position:relative}
 .history-graph-panel{position:relative;margin-top:16px;overflow:hidden;border:1px solid #edf1f4;border-radius:12px;background:white}
 .history-graph-panel.hidden,.history-tooltip.hidden{display:none}
@@ -139,6 +250,13 @@ button.secondary{background:#f6f6f6;color:#333}
 #historyChart:active{cursor:grabbing}
 .history-tooltip{position:absolute;z-index:2;min-width:150px;background:#122;color:white;border-radius:8px;padding:8px 10px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.18);pointer-events:none}
 .footer{color:#5b6870;font-size:14px;margin:18px 0 6px}
+.house-identity{display:inline-flex;align-items:center;gap:7px;margin-bottom:6px;padding:6px 10px;border-radius:999px;background:#eaf4ff;color:#174d78;font-size:14px;font-weight:800;letter-spacing:.02em}
+.house-primary-nav{margin:0 0 18px;padding:10px;border:1px solid #dfe8ee;border-radius:14px;background:#fff}
+.house-primary-nav .button-link.active{background:#122;color:#fff;border-color:#122}
+body[data-house-id="opicina"] .house-identity{background:#eef8ef;color:#28623a}
+@media(max-width:900px){
+  .air-device-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @media(max-width:560px){
   .hero{display:block}
   .header-actions{justify-content:flex-start;margin-top:10px}
@@ -151,8 +269,95 @@ button.secondary{background:#f6f6f6;color:#333}
   .energy-loads,.energy-metrics{grid-template-columns:1fr}
   .energy-main-value,.energy-surplus strong{font-size:48px}
   .viewer-grid,.viewer-metrics{grid-template-columns:1fr}
+  .netatmo-home-grid,.netatmo-device-metrics{grid-template-columns:1fr}
   .viewer-wide{grid-column:auto}
   .event-row{grid-template-columns:1fr}
   .history-option{font-size:16px}
   .history-stat-grid{grid-template-columns:1fr}
+  .air-device-grid{grid-template-columns:1fr}
+  .air-vane-controls{grid-template-columns:1fr}
+  .house-primary-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .house-primary-nav .button-link{justify-content:center;text-align:center}
+}
+
+/* MEM-004 Winter Energy dashboard */
+.winter-wrap { padding-bottom: 2rem; }
+.winter-hero { margin-bottom: 1rem; }
+.winter-simulation-banner { background: #fff8e7; border: 1px solid #e8ad3d; border-radius: 14px; box-shadow: 0 4px 14px rgba(123,83,0,.06); color: #684f00; font-weight: 800; letter-spacing: .025em; margin: 1rem 0 1.35rem; padding: .85rem 1rem; text-align: center; }
+.winter-simulation-banner span { color: #b46b00; font-size: 1.1em; margin-right: .25rem; }
+.winter-section { margin: 1.6rem 0; }
+.winter-section > h2 { margin-bottom: .7rem; }
+.winter-grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.winter-grid .card, .winter-two-column > .card, .winter-decision-history, .winter-history, .winter-legend { background: #fff; border-radius: 16px; box-shadow: 0 6px 20px rgba(30,48,65,.07); min-width: 0; }
+.winter-grid-status .card span, .winter-value-card span { color: var(--muted, #667); display: block; font-size: .85rem; margin-bottom: .4rem; }
+.winter-grid-status .card strong, .winter-value-card strong { display: block; font-size: 1.35rem; overflow-wrap: anywhere; }
+.winter-value-card small { color: var(--muted, #667); display: block; margin-top: .45rem; }
+.winter-grid .winter-value-card { padding: 1rem; }
+.winter-two-column { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 1.6rem 0; }
+.winter-details { margin: 0; }
+.winter-details div { border-bottom: 1px solid rgba(127,127,127,.18); display: flex; gap: 1rem; justify-content: space-between; padding: .65rem 0; }
+.winter-details div:last-child { border-bottom: 0; }
+.winter-details dd { font-weight: 700; margin: 0; text-align: right; }
+.winter-decision > strong { color: #aa6200; display: block; font-size: 1.45rem; margin: 1rem 0 .5rem; }
+.winter-advisor { border: 2px solid #e0a12c; }
+.winter-advisor-title { align-items: center; display: flex; gap: .55rem; }
+.winter-status-dot, .winter-device-dot { background: #2ba66a; border-radius: 50%; box-shadow: 0 0 0 4px rgba(43,166,106,.13); display: inline-block; flex: 0 0 auto; height: .7rem; width: .7rem; }
+.winter-status-dot.inactive { background: #929aa1; box-shadow: 0 0 0 4px rgba(120,130,140,.12); }
+.winter-device-dot { box-shadow: none; height: .55rem; margin-right: .45rem; width: .55rem; }
+.winter-device-dot.idle { background: #72808c; }
+.winter-device-dot.unknown { background: #d59a2e; }
+.winter-advisor-safety { background: #7b1f1f; border-radius: 9px; color: #fff; font-weight: 900; letter-spacing: .06em; line-height: 1.45; margin: .8rem 0; padding: .75rem; text-align: center; }
+.winter-rule-label { color: var(--muted, #667); display: block; text-transform: uppercase; }
+.winter-advisor h3 { font-size: .95rem; margin: 1.25rem 0 .4rem; }
+.winter-reasons { margin: .45rem 0; padding-left: 1.2rem; }
+.winter-reasons li { margin: .35rem 0; }
+.winter-advisor-inputs { border-top: 1px solid rgba(127,127,127,.18); margin-top: 1rem; }
+.winter-target-settings { background: #fff8e7; border: 1px solid #e8c26e; border-radius: 12px; margin-top: 1rem; padding: .85rem; }
+.winter-target-settings > label { display: block; font-size: .9rem; font-weight: 800; margin-bottom: .5rem; }
+.winter-target-control { align-items: center; display: flex; gap: .55rem; }
+.winter-target-control input { background: #fff; border: 1px solid #b8c0c7; border-radius: 8px; font: inherit; font-weight: 700; max-width: 7rem; padding: .55rem .65rem; }
+.winter-target-control .button-link { cursor: pointer; margin-left: auto; }
+.winter-target-settings p { color: #684f00; font-size: .78rem; line-height: 1.4; margin: .65rem 0 .25rem; }
+.winter-target-message { font-size: .82rem; font-weight: 700; min-height: 1.2em; }
+.winter-target-message.success { color: #17663d; }
+.winter-target-message.error { color: #9a2929; }
+.winter-decision-history { margin: 1.6rem 0; }
+.winter-summary { background: rgba(127,127,127,.08); border-radius: 9px; font-size: .9rem; margin: .8rem 0; padding: .75rem; }
+.winter-table-wrap { overflow-x: auto; }
+.winter-decision-history table { border-collapse: collapse; font-size: .85rem; min-width: 900px; width: 100%; }
+.winter-decision-history th, .winter-decision-history td { border-bottom: 1px solid rgba(127,127,127,.18); padding: .6rem; text-align: left; vertical-align: top; }
+.winter-decision-history th { white-space: nowrap; }
+.winter-history-toggle { background: transparent; border: 0; color: #9b5b00; cursor: pointer; display: block; font: inherit; font-size: .88rem; font-weight: 800; margin: .85rem auto 0; padding: .45rem .8rem; }
+.winter-history-toggle:hover, .winter-history-toggle:focus-visible { color: #6f4000; text-decoration: underline; }
+.winter-history-toggle[hidden] { display: none; }
+.winter-history canvas { display: block; height: 230px; max-width: 100%; width: 100%; }
+.winter-history h3 { margin-top: 1.5rem; }
+.winter-legend { margin: 1.6rem 0 1rem; }
+.winter-legend-badges { display: flex; flex-wrap: wrap; gap: .55rem; }
+.winter-legend-badge { border-radius: 999px; color: #38444d; font-size: .75rem; font-weight: 800; padding: .4rem .7rem; }
+.winter-legend-badge.wait { background: #e8edf2; }
+.winter-legend-badge.preheat { background: #fff0cb; color: #805000; }
+.winter-legend-badge.defer { background: #ffe1c5; color: #864500; }
+.winter-legend-badge.no-heat { background: #dff3e7; color: #17663d; }
+.winter-legend-badge.hold { background: #e6e4f7; color: #4e4385; }
+.winter-operating-mode { background: #f1f3f5; border: 1px solid rgba(127,127,127,.18); border-radius: 12px; color: #47535c; font-size: .85rem; font-weight: 800; padding: .75rem 1rem; text-align: center; }
+@media (max-width: 680px) {
+  .winter-two-column { grid-template-columns: 1fr; }
+  .winter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .winter-grid-status { grid-template-columns: 1fr; }
+  .winter-value-card strong { font-size: 1.1rem; }
+  .winter-simulation-banner { font-size: .85rem; }
+  .winter-section > h2 small { display: block; margin-top: .2rem; }
+  .winter-details div { align-items: flex-start; }
+  .winter-details dt { max-width: 55%; }
+  .winter-details dd { overflow-wrap: anywhere; }
+  .winter-decision-history > .row { align-items: flex-start; flex-direction: column; }
+  .winter-decision-history table { min-width: 780px; }
+  .winter-legend-badge { font-size: .7rem; }
+}
+@media (max-width: 430px) {
+  .winter-grid { grid-template-columns: 1fr; }
+  .winter-advisor { padding: 1rem; }
+  .winter-advisor-title { font-size: 1.25rem; }
+  .winter-decision-history, .winter-history, .winter-legend { padding: 1rem; }
 }

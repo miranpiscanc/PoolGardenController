@@ -37,3 +37,5 @@ data/
 device_statistics.json
 event_log.json
 heater_statistics.json
+config/netatmo_config.json
+config/netatmo_tokens.json

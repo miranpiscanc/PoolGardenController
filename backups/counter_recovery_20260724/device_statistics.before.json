@@ -1,0 +1,35 @@
+{
+  "updated_at": "2026-07-24T00:11:49",
+  "relays": {
+    "pool:1": {
+      "daily_date": "2026-07-24",
+      "daily_seconds": 0,
+      "seasonal_seconds": 30536,
+      "total_seconds": 30536,
+      "starts": 2,
+      "active_start": null,
+      "last_known_active": false,
+      "updated_at": null
+    },
+    "pool:2": {
+      "daily_date": "2026-07-24",
+      "daily_seconds": 0,
+      "seasonal_seconds": 44017,
+      "total_seconds": 44017,
+      "starts": 3,
+      "active_start": null,
+      "last_known_active": false,
+      "updated_at": null
+    },
+    "garden:1": {
+      "daily_date": "2026-07-24",
+      "daily_seconds": 0,
+      "seasonal_seconds": 0,
+      "total_seconds": 0,
+      "starts": 0,
+      "active_start": null,
+      "last_known_active": false,
+      "updated_at": null
+    }
+  }
+}

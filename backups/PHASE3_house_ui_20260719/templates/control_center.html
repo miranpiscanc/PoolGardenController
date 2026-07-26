@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeM Control Center</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div>
+        <h1>MeM Control Center</h1>
+        <p class="hero-subtitle">Select the house to manage</p>
+      </div>
+    </header>
+
+    <section class="portal-home" aria-label="Managed houses">
+      <div class="portal-grid">
+        {% for house in houses if house.enabled %}
+        <a class="portal-card" href="{{ house.route }}">
+          <span class="portal-icon" aria-hidden="true">{{ '🏡' if house.id == 'cesclans' else '🏠' }}</span>
+          <div>
+            <h2>{{ house.display_name }}</h2>
+            <p class="muted">{{ house.description }}</p>
+            <div class="pill {{ 'ok' if house.id == 'cesclans' else 'orange' }}">{{ house.status_label }}</div>
+            {% if house.modules %}
+            <p class="muted">{{ house.modules|join(' · ') }}</p>
+            {% else %}
+            <p class="muted">No modules configured</p>
+            {% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</body>
+</html>

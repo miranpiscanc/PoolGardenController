@@ -4,23 +4,130 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title data-i18n="app.title"></title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/static/apple-touch-icon-precomposed.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body data-house-id="{{ house.id }}" data-house-name="{{ house.display_name }}" data-viewer="false">
   <main class="wrap">
     <header class="hero">
       <div>
-        <h1 data-i18n="app.dashboardTitle"></h1>
-        <p class="hero-subtitle" data-i18n="energy.dashboardSubtitle"></p>
-        <small class="hero-refresh" data-i18n="energy.dashboardRefresh"></small>
+        <div class="house-identity">{{ '🏡' if house.id == 'cesclans' else '🏠' }} Casa {{ house.display_name }}</div>
+        <h1>{{ house.display_name }}</h1>
+        <p class="hero-subtitle">Dashboard operativa della casa</p>
+        <small class="hero-refresh"><span data-i18n="energy.dashboardRefresh"></span> · <span id="refreshCountdown"></span></small>
       </div>
       <div class="header-actions">
+        <a class="button-link" href="/">Control Center</a>
         <div id="languageSelector" class="language-selector"></div>
         <div id="globalStatus" class="pill gray" data-i18n="common.loading"></div>
         <div id="appMeta" class="header-meta" data-i18n="common.loading"></div>
       </div>
     </header>
 
+    <nav class="row gap nav-actions house-primary-nav" aria-label="Navigazione principale">
+      <a class="button-link {{ 'active' if house.id == 'opicina' else '' }}" href="/opicina">🏠 Opicina</a>
+      <a class="button-link {{ 'active' if house.id == 'cesclans' else '' }}" href="/cesclans">🏡 Cesclans</a>
+      <a class="button-link" href="/comparisons">📊 Comparisons</a>
+      <a class="button-link" href="/winter">❄ Winter Energy</a>
+      <a class="button-link" href="{{ '#settings' if house.id == 'cesclans' else '/cesclans#settings' }}">⚙ System</a>
+    </nav>
+
+    <section id="portalHome" class="portal-home">
+      <div class="portal-grid">
+        <a class="portal-card" href="#netatmo">
+          <span class="portal-icon">🏠</span>
+          <div>
+            <h2 data-i18n="portal.netatmo"></h2>
+            <p id="portalNetatmoSummary" class="muted">--</p>
+            <div id="portalNetatmoBadge" class="pill gray" data-i18n="common.loading"></div>
+          </div>
+        </a>
+        {% if house.id == 'cesclans' %}<a class="portal-card" href="#pool">
+          <span class="portal-icon">🏊</span>
+          <div>
+            <h2 data-i18n="portal.pool"></h2>
+            <p id="portalPoolSummary" class="muted">--</p>
+            <div id="portalPoolBadge" class="pill gray" data-i18n="common.loading"></div>
+          </div>
+        </a>{% endif %}
+        {% if house.id == 'cesclans' %}<a class="portal-card" href="#energy">
+          <span class="portal-icon">☀</span>
+          <div>
+            <h2 data-i18n="portal.energy"></h2>
+            <p id="portalEnergySummary" class="muted">--</p>
+            <div id="portalEnergyBadge" class="pill gray" data-i18n="common.loading"></div>
+          </div>
+        </a>{% endif %}
+        <a class="portal-card" href="#weather">
+          <span class="portal-icon">🌤</span>
+          <div>
+            <h2 data-i18n="portal.weather"></h2>
+            <p id="portalWeatherSummary" class="muted">--</p>
+            <div id="portalWeatherBadge" class="pill gray" data-i18n="common.loading"></div>
+          </div>
+        </a>
+        <a class="portal-card air-portal-card" href="#air-conditioning">
+          <span class="portal-icon">❄️</span>
+          <div class="air-portal-content">
+            <h2 data-i18n="airConditioning.title"></h2>
+            <div class="air-portal-summary">
+              <span><strong id="portalAirTotal">--</strong> <span data-i18n="airConditioning.devices"></span></span>
+              <span class="air-on-count">🟢 ON <strong id="portalAirOn">--</strong></span>
+              <span>⚪ OFF <strong id="portalAirOff">--</strong></span>
+            </div>
+            <div class="air-portal-update">
+              <span data-i18n="airConditioning.lastSuccessfulUpdate"></span>
+              <strong id="portalAirLastUpdate">--:--:--</strong>
+            </div>
+          </div>
+        </a>
+        <a class="portal-card" href="/{{ house.id }}/history">
+          <span class="portal-icon">📈</span>
+          <div>
+            <h2 data-i18n="portal.history"></h2>
+            <p class="muted" data-i18n="portal.historySummary"></p>
+            <div class="pill info" data-i18n="portal.open"></div>
+          </div>
+        </a>
+        <a class="portal-card" href="/event-log">
+          <span class="portal-icon">📜</span>
+          <div>
+            <h2 data-i18n="portal.events"></h2>
+            <p class="muted" data-i18n="portal.eventsSummary"></p>
+            <div class="pill info" data-i18n="portal.open"></div>
+          </div>
+        </a>
+        <a class="portal-card" href="/winter">
+          <span class="portal-icon">🏔️</span>
+          <div>
+            <h2>Winter Energy</h2>
+            <p class="muted">Learning mode e simulazione energetica</p>
+            <div class="pill info">Apri</div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <nav class="row gap nav-actions portal-section-nav">
+      <a class="button-link" href="#"><span class="nav-icon">🏠</span><span data-i18n="portal.home"></span></a>
+      <a class="button-link" href="#netatmo"><span class="nav-icon">🏡</span><span data-i18n="portal.netatmo"></span></a>
+      {% if house.id == 'cesclans' %}<a class="button-link" href="#pool"><span class="nav-icon">🏊</span><span data-i18n="portal.pool"></span></a>{% endif %}
+      {% if house.id == 'cesclans' %}<a class="button-link" href="#energy"><span class="nav-icon">☀️</span><span data-i18n="portal.energy"></span></a>{% endif %}
+      <a class="button-link" href="#weather"><span class="nav-icon">🌤️</span><span data-i18n="portal.weather"></span></a>
+      <a class="button-link" href="#air-conditioning"><span class="nav-icon">❄️</span><span data-i18n="airConditioning.nav"></span></a>
+      <a class="button-link" href="/{{ house.id }}/history"><span class="nav-icon">📈</span><span data-i18n="history.pageTitle"></span></a>
+      <a class="button-link" href="/report"><span class="nav-icon">📊</span><span data-i18n="statistics.pageTitle"></span></a>
+      <a class="button-link" href="/event-log"><span class="nav-icon">📜</span><span data-i18n="events.pageTitle"></span></a>
+      <a class="button-link" href="/winter"><span class="nav-icon">🏔️</span><span>Winter Energy</span></a>
+      {% if house.id == 'cesclans' %}<a class="button-link" href="#settings"><span class="nav-icon">⚙️</span><span data-i18n="portal.settings"></span></a>{% endif %}
+    </nav>
+
+    {% if house.id == 'cesclans' %}
+    <section id="pageEnergy" class="portal-page hidden">
     <section class="energy-dashboard">
       <section class="card energy-card energy-house-card">
         <h2><span class="energy-icon">🏠</span> <span data-i18n="energy.houseConsumption"></span></h2>
@@ -72,13 +179,12 @@
       </section>
     </section>
 
-    <nav class="row gap nav-actions">
-      <a class="button-link" href="/history" data-i18n="nav.history"></a>
-      <a class="button-link" href="/report" data-i18n="nav.statistics"></a>
-      <a class="button-link" href="/event-log" data-i18n="nav.eventLog"></a>
-      <button class="secondary" type="button" onclick="refreshRelays()" data-i18n="nav.refreshRelays"></button>
-    </nav>
+    </section>
 
+    {% endif %}
+
+    {% if house.id == 'cesclans' %}
+    <section id="pagePool" class="portal-page hidden">
     <section class="card pump-card">
       <div class="pump-layout">
         <div class="pump-controls">
@@ -139,19 +245,6 @@
       </div>
     </section>
 
-    <section class="card weather-card">
-      <h2 data-i18n="weather.title"></h2>
-      <div id="weatherLocations" class="weather-locations"></div>
-      <div class="temperature-status">
-        <div class="muted" data-i18n="weather.communicationStatus"></div>
-        <div id="weatherCommunication" class="pill gray" data-i18n="common.loading"></div>
-      </div>
-      <div class="temperature-footer">
-        <div class="muted" data-i18n="common.lastUpdate"></div>
-        <div id="weatherLastUpdate">--:--:--</div>
-      </div>
-    </section>
-
     <section class="card solar-card">
       <div class="row between">
         <div>
@@ -205,7 +298,7 @@
           <input id="solarEarlyCompletionConfirmation" type="number" min="30" max="240" step="5" value="120">
         </label>
         <label><span data-i18n="solar.minimumPvProduction"></span>
-          <input id="solarMinimumPvProduction" type="number" min="0" step="100" value="3000">
+          <input id="solarMinimumPvProduction" type="number" min="0" step="100" value="2700">
         </label>
         <label><span data-i18n="solar.pvRunningCheckInterval"></span>
           <input id="solarPvRunningCheckInterval" type="number" min="1" step="1" value="30">
@@ -219,6 +312,77 @@
       </div>
     </section>
 
+    <section class="cards" id="relayCards"></section>
+
+    <nav class="row gap nav-actions">
+      <button class="secondary" type="button" onclick="refreshRelays()" data-i18n="nav.refreshRelays"></button>
+    </nav>
+    </section>
+
+    {% endif %}
+
+    <section id="pageWeather" class="portal-page hidden">
+    <section class="card weather-card">
+      <h2 data-i18n="weather.title"></h2>
+      <div id="weatherLocations" class="weather-locations"></div>
+      <div class="temperature-status">
+        <div class="muted" data-i18n="weather.communicationStatus"></div>
+        <div id="weatherCommunication" class="pill gray" data-i18n="common.loading"></div>
+      </div>
+      <div class="temperature-footer">
+        <div class="muted" data-i18n="common.lastUpdate"></div>
+        <div id="weatherLastUpdate">--:--:--</div>
+      </div>
+    </section>
+    </section>
+
+    <section id="pageNetatmo" class="portal-page hidden">
+    <section class="card netatmo-card">
+      <h2 data-i18n="netatmo.title"></h2>
+      <div id="netatmoLocations" class="netatmo-dashboard"></div>
+      <section class="netatmo-history">
+        <div class="row between gap">
+          <div><h3>Andamento temperature</h3><div class="muted">Confronto dei quattro sensori Netatmo</div></div>
+          <button id="netatmoHistoryToggle" type="button">Apri grafico</button>
+        </div>
+        <div id="netatmoHistoryPanel" class="netatmo-history-panel hidden">
+          <div id="netatmoHistoryPeriods" class="history-button-group">
+            <button type="button" class="history-option active" data-period="24h">24 ore</button>
+            <button type="button" class="history-option" data-period="7d">7 giorni</button>
+            <button type="button" class="history-option" data-period="30d">30 giorni</button>
+            <button type="button" class="history-option" data-period="12m">12 mesi</button>
+          </div>
+          <div id="netatmoHistoryMessage" class="muted"></div>
+          <canvas id="netatmoHistoryChart"></canvas>
+        </div>
+      </section>
+      <div class="temperature-status">
+        <div class="muted" data-i18n="netatmo.communicationStatus"></div>
+        <div id="netatmoCommunication" class="pill gray" data-i18n="common.loading"></div>
+      </div>
+      <div class="temperature-footer">
+        <div class="muted" data-i18n="common.lastUpdate"></div>
+        <div id="netatmoLastUpdate">--:--:--</div>
+      </div>
+    </section>
+    </section>
+
+    <section id="pageAirConditioning" class="portal-page hidden">
+      <section class="card air-page-header">
+        <div class="row between gap">
+          <div>
+            <h2 data-i18n="airConditioning.pageTitle"></h2>
+            <p class="muted" data-i18n="airConditioning.subtitle"></p>
+          </div>
+          <div id="airConditioningStatus" class="pill gray" data-i18n="common.loading"></div>
+        </div>
+      </section>
+      <div id="airConditioningEmpty" class="card muted" data-i18n="airConditioning.loading"></div>
+      <div id="airConditioningGroups" class="air-groups"></div>
+    </section>
+
+    {% if house.id == 'cesclans' %}
+    <section id="pageSettings" class="portal-page hidden">
     <section class="card">
       <h2 data-i18n="telegram.title"></h2>
       <label class="checkbox-row">
@@ -243,8 +407,8 @@
       </div>
       <div id="telegramStatus" class="muted telegram-status"></div>
     </section>
-
-    <section class="cards" id="relayCards"></section>
+    </section>
+    {% endif %}
 
     <section class="card small">
       <h2 data-i18n="diagnostics.title"></h2>
@@ -252,6 +416,8 @@
     </section>
     <footer class="footer"><span data-i18n="common.lastSuccessfulRefresh"></span> <span id="lastRefresh">-</span></footer>
   </main>
+  <script src="/static/house_ui.js"></script>
+  <script src="/static/netatmo_history.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

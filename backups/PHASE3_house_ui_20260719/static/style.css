@@ -1,0 +1,288 @@
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#122;background:#eef4f7}
+body{margin:0}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+.hero{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:8px 0 18px}
+.hero h1{margin:0;font-size:clamp(26px,5vw,42px)}
+.hero p{margin:4px 0;color:#5b6870}
+.hero-subtitle{font-size:16px;font-weight:700}
+.hero-readonly{display:block;color:#43515a;font-size:13px;font-weight:800;margin-top:2px}
+.hero-refresh{display:block;color:#7d8a92;font-size:13px}
+.header-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.header-meta{width:100%;text-align:right;color:#7d8a92;font-size:13px}
+.language-selector{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.6);border:1px solid #d7e0e6;border-radius:999px;padding:4px}
+.language-option{display:inline-flex;align-items:center;gap:4px;border:0;border-radius:999px;padding:6px 8px;background:transparent;color:#43515a}
+.language-option.active{background:#122;color:white}
+.language-option span{font-size:12px;font-weight:800}
+.card{background:white;border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 8px 28px rgba(20,45,60,.10)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.row{display:flex;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.gap{gap:10px}
+.grid.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 12px}
+.grid.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 12px}
+.grid.four{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 12px}
+.pump-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.85fr);gap:18px;align-items:start}
+.pump-temperature-card{background:#f6f9fb;border:1px solid #edf1f4;border-radius:18px;padding:16px}
+.pump-temperature-card .temperature-grid{grid-template-columns:1fr}
+h2{margin:0 0 10px}
+.state{font-size:24px;font-weight:800}
+.state.on{color:#16803c}
+.state.off{color:#aa1d2c}
+.state.unknown{color:#777}
+.mode,.pill{border-radius:999px;padding:8px 12px;font-weight:700}
+.mode{background:#e8f2ff;color:#0b559f}
+.pill.gray{background:#e6e6e6}
+.pill.ok{background:#e3f8e9;color:#137034}
+.pill.warn{background:#fff7d6;color:#8a6500}
+.pill.bad{background:#ffe6e8;color:#a0192a}
+.pill.info{background:#e8f2ff;color:#0b559f}
+.pill.orange{background:#ffeddc;color:#9a4b00}
+button,select,input,.button-link{font:inherit;border-radius:12px;border:1px solid #ccd6dd;padding:10px 12px}
+button,.button-link{cursor:pointer;background:#f3f7fa;font-weight:700;text-decoration:none;color:#122}
+button.on{background:#e5f8ea;color:#117236}
+button.off{background:#ffe8ea;color:#a31526}
+button.secondary{background:#f6f6f6;color:#333}
+.checkbox-row{display:flex;align-items:center;gap:8px;margin:10px 0 0}
+.checkbox-row input{width:auto}
+.password-field{display:flex;gap:8px}
+.password-field input{min-width:0;flex:1}
+.telegram-status{margin-top:10px;font-weight:700}
+.nav-actions{margin:0 0 16px}
+.hidden{display:none!important}
+.portal-home{margin-bottom:16px}
+.portal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.portal-card{display:flex;align-items:flex-start;gap:14px;background:white;border:1px solid #dcebf3;border-radius:18px;padding:18px;text-decoration:none;color:#122;box-shadow:0 8px 28px rgba(20,45,60,.10)}
+.portal-card:hover{border-color:#b8d4e4;transform:translateY(-1px)}
+.portal-card h2{margin:0 0 6px}
+.portal-card p{margin:0 0 10px}
+.portal-icon{font-size:34px;line-height:1}
+.portal-section-nav .button-link{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.nav-icon{display:inline-block;font-size:1em;line-height:1;width:1.15em;text-align:center;flex:0 0 auto}
+.air-portal-content{flex:1;min-width:0}
+.air-portal-summary{display:flex;gap:8px 12px;flex-wrap:wrap;color:#43515a;font-size:14px;font-weight:750}
+.air-portal-summary strong{font-size:18px;color:#122}
+.air-portal-summary .air-on-count,.air-portal-summary .air-on-count strong{color:#137034}
+.air-portal-update{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #edf1f4;margin-top:10px;padding-top:9px;color:#7d8a92;font-size:12px}
+.air-portal-update strong{color:#43515a}
+.portal-section-nav .button-link.active{background:#122;color:white;border-color:#122}
+.portal-page{margin-bottom:16px}
+.buttons{margin-top:16px}
+.timeline{height:16px;background:#e8edf1;border-radius:999px;overflow:hidden;margin:16px 0 8px}
+.bar{height:100%;width:0%;background:linear-gradient(90deg,#39a66a,#7ccf91)}
+.muted{color:#5b6870}
+.temperature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:12px 0}
+.temperature-value{font-size:32px;font-weight:800;margin-top:4px;min-height:40px}
+.temperature-value.offline{color:#a0192a;font-size:24px}
+.temperature-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0;padding-top:12px}
+.temperature-status{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #edf1f4;margin:12px 0 0;padding-top:12px}
+.weather-card{border:1px solid #dcebf3}
+.weather-locations{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+.weather-location{background:#f6f9fb;border-radius:12px;padding:12px}
+.weather-location h3{margin:0 0 10px;font-size:20px}
+.weather-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.weather-metric span{display:block;color:#5b6870;font-size:13px}
+.weather-metric strong{display:block;font-size:28px;margin-top:3px;overflow-wrap:anywhere}
+.weather-metric strong.offline{color:#a0192a;font-size:20px}
+.weather-forecast{margin-top:14px;padding-top:12px;border-top:1px solid #dfe8ed}
+.weather-forecast.offline{color:#a0192a;font-weight:700}
+.weather-forecast-title{color:#5b6870;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.weather-forecast-condition{display:flex;align-items:center;gap:9px;margin:7px 0;font-size:18px}
+.weather-forecast-condition>span{font-size:30px}
+.weather-forecast-details{display:grid;gap:5px;color:#43515a;font-size:14px;font-weight:650}
+.netatmo-card{border:1px solid #dcebf3}
+.netatmo-dashboard{display:grid;gap:16px;margin-top:12px}
+.netatmo-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.netatmo-summary-card{background:#f6f9fb;border:1px solid #edf1f4;border-radius:14px;padding:14px}
+.netatmo-summary-card h3{margin:0 0 10px;font-size:21px}
+.netatmo-summary-lines{display:grid;gap:7px;color:#43515a;font-weight:750}
+.netatmo-home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.netatmo-home-column{background:#f9fbfc;border:1px solid #edf1f4;border-radius:16px;padding:14px}
+.netatmo-home-column>h3{margin:0 0 14px;font-size:22px;letter-spacing:.02em}
+.netatmo-device-grid{display:grid;gap:12px}
+.netatmo-device-card{background:white;border:1px solid #e4edf2;border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(20,45,60,.06)}
+.netatmo-device-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.netatmo-device-head h4{margin:0;font-size:20px}
+.netatmo-device-subtitle{margin-top:3px;color:#7d8a92;font-size:12px;font-weight:700}
+.netatmo-device-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.netatmo-device-metric{background:#f6f9fb;border-radius:10px;padding:10px;min-width:0}
+.netatmo-device-metric span{display:block;color:#5b6870;font-size:13px}
+.netatmo-device-metric strong{display:block;font-size:21px;margin-top:3px;overflow-wrap:anywhere}
+.netatmo-device-metric strong.pill{display:inline-block;font-size:14px;margin-top:6px}
+.netatmo-device-footer{border-top:1px solid #edf1f4;margin-top:12px;padding-top:10px;color:#7d8a92;font-size:12px;font-weight:700}
+.air-page-header p{margin:4px 0 0}
+.air-groups{display:grid;gap:22px}
+.air-group>h2{font-size:24px;margin:0 0 12px}
+.air-device-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.air-device-card{position:relative;display:flex;flex-direction:column;margin-bottom:0;border:1px solid #e4edf2;overflow:visible;transition:border-color .2s,box-shadow .2s}
+.air-device-card.air-device-on{border-color:#a9dfba;box-shadow:0 8px 28px rgba(19,112,52,.13)}
+.air-device-card.air-device-off{border-color:#dce3e7}
+.air-device-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px}
+.air-device-head h3{margin:0;font-size:21px;line-height:1.2;overflow-wrap:anywhere}
+.air-device-head .pill{flex:0 0 auto;font-size:12px;padding:6px 9px}
+.air-room-temperature{background:linear-gradient(135deg,#edf7ff,#f6f9fb);border:1px solid #dcebf3;border-radius:16px;padding:15px;margin-bottom:14px;text-align:center}
+.air-room-temperature span{display:block;color:#5b6870;font-size:13px}
+.air-room-temperature strong{display:block;color:#0b559f;font-size:48px;font-weight:900;line-height:1.05;margin-top:5px;letter-spacing:-.03em}
+.air-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.air-metric{background:#f6f9fb;border-radius:10px;padding:10px;min-width:0}
+.air-metric span{display:block;color:#5b6870;font-size:12px}
+.air-metric strong{display:block;font-size:15px;margin-top:3px;overflow-wrap:anywhere}
+.air-error-metric{grid-column:1/-1}
+.air-error-metric.no-error{background:#e3f8e9;color:#137034}
+.air-error-metric.no-error span,.air-error-metric.no-error strong{color:#137034}
+.air-error-metric.has-error{background:#ffe6e8;border:1px solid #f4b9c0}
+.air-error-metric strong.has-error{color:#a0192a}
+.air-controls{display:grid;gap:12px;border:0;border-top:1px solid #edf1f4;margin:14px 0 0;padding:14px 0 0;min-width:0;overflow:visible}
+.air-control-group{display:grid;gap:7px;min-width:0;overflow:visible}
+.air-control-label{color:#5b6870;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.air-button-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(54px,1fr));gap:6px;min-width:0;overflow:visible}
+.air-controls button{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;position:relative;z-index:1;min-width:0;min-height:36px;background:#f3f7fa;color:#122;-webkit-text-fill-color:currentColor;visibility:visible;opacity:1;white-space:nowrap;line-height:1.15}
+.air-button-group button{width:100%;padding:8px 7px;font-size:12px}
+.air-controls .air-button-group button.active{background:#122;color:white;-webkit-text-fill-color:currentColor;border-color:#122}
+.air-power-button{min-height:40px;font-size:13px!important;font-weight:850}
+.air-controls .air-power-button.on.active{background:#16803c;color:white;border-color:#16803c}
+.air-controls .air-power-button.off.active{background:#aa1d2c;color:white;border-color:#aa1d2c}
+.air-temperature-control{display:grid;grid-template-columns:44px minmax(82px,1fr) 44px;gap:10px;align-items:center}
+.air-temperature-control button{width:44px;height:44px;padding:0;font-size:22px;line-height:1}
+.air-temperature-control strong{text-align:center;font-size:20px}
+.air-vane-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.air-vane-controls button{padding:8px;font-size:12px}
+.air-command-status{min-height:18px;margin-top:8px;font-size:12px;font-weight:750}
+.air-command-status.success{color:#137034}
+.air-command-status.error{color:#a0192a}
+.air-device-footer{display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #edf1f4;margin-top:auto;padding-top:10px;color:#8a969d;font-size:11px;text-align:right}
+.air-device-footer strong{font-weight:750;color:#6f7d85}
+.air-device-spinner{position:absolute;right:14px;top:62px;display:flex;align-items:center;gap:7px;background:white;border:1px solid #dcebf3;border-radius:999px;padding:6px 9px;color:#43515a;font-size:11px;font-weight:800;box-shadow:0 4px 14px rgba(20,45,60,.10)}
+.spinner{width:13px;height:13px;border:2px solid #d7e0e6;border-top-color:#0b559f;border-radius:50%;animation:air-spin .7s linear infinite}
+.air-device-card.is-busy{border-color:#8dbbd5}
+.air-device-card fieldset:disabled{opacity:.58}
+@keyframes air-spin{to{transform:rotate(360deg)}}
+.solar-card{border:1px solid #ffe9a8}
+.solar-status-badge{display:inline-block;margin-top:2px}
+.solar-status-message{margin-top:8px;white-space:pre-line;font-weight:700}
+.solar-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:16px 0 0}
+.solar-summary div{background:#fffaf0;border-radius:12px;padding:10px}
+.solar-summary span{display:block;color:#5b6870;font-size:13px}
+.solar-summary strong{display:block;font-size:20px;margin-top:3px}
+.energy-dashboard{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch;margin-bottom:16px}
+.energy-card{margin-bottom:16px}
+.energy-card h2{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.energy-icon{font-size:28px;line-height:1}
+.energy-main-value{font-size:64px;font-weight:900;line-height:1;margin:12px 0 8px;letter-spacing:0}
+.energy-divider{height:1px;background:#edf1f4;margin:18px 0}
+.energy-loads,.energy-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.energy-loads div,.energy-metrics div{background:#f6f9fb;border-radius:12px;padding:10px}
+.energy-loads span,.energy-metrics span,.energy-surplus span{display:block;color:#5b6870;font-size:13px}
+.energy-metrics small{display:block;color:#7d8a92;font-size:12px;margin-top:2px}
+.energy-loads strong,.energy-metrics strong{display:block;font-size:22px;margin-top:4px}
+.grid-direction,.battery-direction{display:block;margin-top:6px;font-style:normal;font-weight:800;color:#43515a}
+.battery-temperature-label{display:block;margin-top:10px;font-style:normal;font-weight:800;color:#5b6870}
+.battery-temperature-value{margin-top:2px}
+.energy-surplus strong{display:block;font-size:64px;font-weight:900;line-height:1;margin-top:8px;letter-spacing:0}
+.smart-loads{margin-top:14px;font-weight:850;font-size:18px}
+.smart-loads.enabled{color:#137034}
+.smart-loads.waiting{color:#8a6500}
+.smart-loads.disabled{color:#a0192a}
+.energy-temperature-card{grid-column:1 / -1}
+.viewer-wrap{max-width:1100px}
+.viewer-hero{align-items:flex-start}
+.viewer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.viewer-card{margin-bottom:0}
+.viewer-wide{grid-column:1 / -1}
+.viewer-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.viewer-metrics div{background:#f6f9fb;border-radius:12px;padding:10px;min-width:0}
+.viewer-metrics span{display:block;color:#5b6870;font-size:13px}
+.viewer-metrics strong{display:block;font-size:22px;margin-top:4px;overflow-wrap:anywhere}
+.viewer-metrics em{display:block;margin-top:4px;font-style:normal;font-weight:800;color:#43515a}
+.viewer-readonly-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:16px}
+.viewer-readonly-grid div{background:#f6f9fb;border-radius:12px;padding:10px}
+.viewer-readonly-grid span{display:block;color:#5b6870;font-size:13px}
+.viewer-readonly-grid strong{display:block;font-size:24px;margin-top:4px}
+.viewer-last-goodwe{margin-top:8px;font-weight:700}
+.viewer-statistics{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.viewer-stat-card{margin-bottom:0;box-shadow:none;border:1px solid #edf1f4}
+.diag{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;font-size:14px}
+.relay-title{display:flex;gap:10px;align-items:center}
+.relay-title .icon{font-size:26px}
+.relay-actions{display:flex;gap:8px;margin-top:14px}
+.heater-reason{display:inline-block;margin:8px 0 10px}
+.stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.stat-grid div{background:#f6f9fb;border-radius:12px;padding:10px}
+.stat-grid span{display:block;color:#5b6870;font-size:13px}
+.stat-grid strong{display:block;font-size:20px;margin-top:3px}
+.event-log{display:grid;gap:10px}
+.event-row{display:grid;grid-template-columns:1fr 1.4fr;gap:14px;border-bottom:1px solid #edf1f4;padding:0 0 10px}
+.event-row:last-child{border-bottom:0;padding-bottom:0}
+.event-row span{display:block;color:#5b6870;font-size:14px;margin-top:2px}
+.history-controls-card{display:grid;gap:14px}
+.history-button-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.history-option{min-height:58px;font-size:18px}
+.history-option.active{background:#122;color:white;border-color:#122}
+.history-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.history-stat-card{margin-bottom:0}
+.history-metric-block{border-top:1px solid #edf1f4;margin-top:14px;padding-top:14px}
+.history-metric-block:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.history-metric-block h3{margin:0 0 10px;font-size:18px}
+.history-stat-section{margin-top:14px}
+.history-stat-section h4{margin:0 0 8px;font-size:16px}
+.history-stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.history-stat-grid div{background:#f6f9fb;border-radius:12px;padding:10px}
+.history-stat-grid span{display:block;color:#5b6870;font-size:13px}
+.history-stat-grid strong{display:block;font-size:24px;margin-top:4px}
+.history-stat-grid small{display:block;color:#5b6870;font-size:12px;margin-top:6px}
+.history-stat-grid .history-stat-empty{grid-column:1/-1;font-size:14px}
+.history-graph-card{position:relative}
+.history-graph-panel{position:relative;margin-top:16px;overflow:hidden;border:1px solid #edf1f4;border-radius:12px;background:white}
+.history-graph-panel.hidden,.history-tooltip.hidden{display:none}
+#historyChart{display:block;width:100%;height:380px;touch-action:none;cursor:grab}
+#historyChart:active{cursor:grabbing}
+.history-tooltip{position:absolute;z-index:2;min-width:150px;background:#122;color:white;border-radius:8px;padding:8px 10px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.18);pointer-events:none}
+.footer{color:#5b6870;font-size:14px;margin:18px 0 6px}
+@media(max-width:900px){
+  .air-device-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .hero{display:block}
+  .header-actions{justify-content:flex-start;margin-top:10px}
+  .header-meta{text-align:left}
+  .state{font-size:22px}
+  .card{border-radius:18px}
+  .pump-layout{grid-template-columns:1fr}
+  .temperature-grid{grid-template-columns:1fr}
+  .energy-dashboard{grid-template-columns:1fr}
+  .energy-loads,.energy-metrics{grid-template-columns:1fr}
+  .energy-main-value,.energy-surplus strong{font-size:48px}
+  .viewer-grid,.viewer-metrics{grid-template-columns:1fr}
+  .netatmo-home-grid,.netatmo-device-metrics{grid-template-columns:1fr}
+  .viewer-wide{grid-column:auto}
+  .event-row{grid-template-columns:1fr}
+  .history-option{font-size:16px}
+  .history-stat-grid{grid-template-columns:1fr}
+  .air-device-grid{grid-template-columns:1fr}
+  .air-vane-controls{grid-template-columns:1fr}
+}
+
+/* MEM-004 Winter Energy dashboard */
+.winter-wrap { padding-bottom: 3rem; }
+.winter-hero { margin-bottom: 1rem; }
+.winter-simulation-banner { background: #fff3cd; border: 1px solid #e6ba43; border-radius: 12px; color: #684f00; font-weight: 800; letter-spacing: .035em; margin: 1rem 0 1.5rem; padding: 1rem; text-align: center; }
+.winter-section { margin: 1.6rem 0; }
+.winter-section > h2 { margin-bottom: .7rem; }
+.winter-grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.winter-grid .card { min-width: 0; }
+.winter-grid-status .card span, .winter-value-card span { color: var(--muted, #667); display: block; font-size: .85rem; margin-bottom: .4rem; }
+.winter-grid-status .card strong, .winter-value-card strong { display: block; font-size: 1.35rem; overflow-wrap: anywhere; }
+.winter-value-card small { color: var(--muted, #667); display: block; margin-top: .45rem; }
+.winter-two-column { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 1.6rem 0; }
+.winter-details { margin: 0; }
+.winter-details div { border-bottom: 1px solid rgba(127,127,127,.18); display: flex; gap: 1rem; justify-content: space-between; padding: .65rem 0; }
+.winter-details dd { font-weight: 700; margin: 0; text-align: right; }
+.winter-decision > strong { color: #aa6200; display: block; font-size: 1.45rem; margin: 1rem 0 .5rem; }
+.winter-history canvas { display: block; height: 230px; max-width: 100%; width: 100%; }
+.winter-history h3 { margin-top: 1.5rem; }
+@media (max-width: 680px) {
+  .winter-two-column { grid-template-columns: 1fr; }
+  .winter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .winter-grid-status { grid-template-columns: 1fr; }
+  .winter-value-card strong { font-size: 1.1rem; }
+  .winter-simulation-banner { font-size: .85rem; }
+}

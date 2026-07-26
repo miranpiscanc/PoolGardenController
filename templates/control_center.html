@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeM Control Center</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div>
+        <h1>MeM Control Center</h1>
+        <p class="hero-subtitle">Seleziona la casa o una sezione trasversale</p>
+      </div>
+    </header>
+
+    <section class="portal-home" aria-label="Managed houses">
+      <div class="portal-grid">
+        {% for house in houses if house.enabled %}
+        <a class="portal-card" href="{{ house.route }}">
+          <span class="portal-icon" aria-hidden="true">{{ '🏡' if house.id == 'cesclans' else '🏠' }}</span>
+          <div>
+            <h2>{{ house.display_name }}</h2>
+            <p class="muted">{{ 'Energia, piscina, clima, ambiente e meteo' if house.id == 'cesclans' else 'Clima, ambiente e meteo' }}</p>
+            <div class="pill info">Apri dashboard casa</div>
+          </div>
+        </a>
+        {% endfor %}
+        <a class="portal-card" href="/comparisons">
+          <span class="portal-icon" aria-hidden="true">📊</span>
+          <div><h2>Comparisons</h2><p class="muted">Confronto dei dati reali disponibili per Cesclans e Opicina</p><div class="pill info">Apri</div></div>
+        </a>
+        <a class="portal-card" href="/winter">
+          <span class="portal-icon" aria-hidden="true">❄</span>
+          <div><h2>Winter Energy</h2><p class="muted">Apprendimento termico e simulazione energetica</p><div class="pill info">Apri</div></div>
+        </a>
+        <a class="portal-card" href="/cesclans#settings">
+          <span class="portal-icon" aria-hidden="true">⚙</span>
+          <div><h2>System</h2><p class="muted">Impostazioni e diagnostica esistenti</p><div class="pill info">Apri</div></div>
+        </a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

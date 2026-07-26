@@ -24,6 +24,64 @@
     "eventLog": "📜 Registro eventi",
     "refreshRelays": "Aggiorna relè"
   },
+  "portal": {
+    "home": "Home",
+    "netatmo": "Netatmo / Ambiente",
+    "pool": "Piscina",
+    "energy": "Inverter / Energia",
+    "weather": "Meteo",
+    "history": "Storico / Report",
+    "events": "Registro eventi",
+    "settings": "Impostazioni",
+    "open": "Apri",
+    "historySummary": "Grafici, report e statistiche",
+    "eventsSummary": "Eventi e comunicazioni recenti"
+  },
+  "airConditioning": {
+    "title": "Climatizzazione",
+    "nav": "Climatizzazione",
+    "pageTitle": "❄️ Climatizzazione",
+    "subtitle": "Monitoraggio e controllo manuale dei climatizzatori Intesis",
+    "devices": "Dispositivi",
+    "unnamedDevice": "Climatizzatore",
+    "lastSuccessfulUpdate": "Ultimo aggiornamento riuscito",
+    "loading": "Caricamento climatizzatori...",
+    "noDevices": "Nessun climatizzatore disponibile",
+    "available": "{count} dispositivi disponibili",
+    "unavailable": "Intesis non disponibile",
+    "loadError": "Impossibile caricare i climatizzatori: {error}",
+    "invalidResponse": "Risposta Intesis non valida",
+    "groups": {
+      "opicina": "🏠 Opicina",
+      "cesclans": "🏡 Cesclans"
+    },
+    "power": "Alimentazione",
+    "mode": "Modalità",
+    "roomTemperature": "Temperatura ambiente",
+    "targetTemperature": "Temperatura impostata",
+    "fanSpeed": "Velocità ventola",
+    "verticalVane": "Aletta verticale",
+    "horizontalVane": "Aletta orizzontale",
+    "wifi": "Segnale WiFi",
+    "wifiLevels": {
+      "excellent": "Eccellente",
+      "good": "Buono",
+      "medium": "Medio",
+      "weak": "Debole",
+      "veryWeak": "Molto debole"
+    },
+    "workingHours": "Ore di funzionamento",
+    "currentError": "Errore attuale",
+    "errorCode": "Codice errore",
+    "noError": "🟢 Nessun errore",
+    "turnOn": "🟢 Accendi",
+    "turnOff": "🔴 Spegni",
+    "swing": "AUTO / OSCILLA",
+    "autoStop": "AUTO / STOP",
+    "sending": "Invio...",
+    "commandCompleted": "Comando completato",
+    "commandFailed": "Comando non riuscito"
+  },
   "status": {
     "on": "ACCESO",
     "off": "SPENTO",
@@ -74,6 +132,22 @@
     "communicationStatus": "Stato comunicazione sensori",
     "location": "Località: {location}",
     "placeholder": "--",
+    "todayForecast": "Previsione di oggi",
+    "forecastUnavailable": "Previsione non disponibile",
+    "temperatureRange": "Min {min} · Max {max}",
+    "rainForecast": "Pioggia {probability} · {amount}",
+    "windForecast": "Vento fino a {speed}",
+    "conditions": {
+      "clear": "Sereno",
+      "partlyCloudy": "Parzialmente nuvoloso",
+      "fog": "Nebbia",
+      "drizzle": "Pioviggine",
+      "rain": "Pioggia",
+      "snow": "Neve",
+      "showers": "Rovesci",
+      "thunderstorm": "Temporale",
+      "unknown": "Tempo variabile"
+    },
     "metrics": {
       "temperature": "Temperatura",
       "humidity": "Umidità"
@@ -83,6 +157,47 @@
       "partial": "🟡 Alcuni sensori meteo offline",
       "offline": "🔴 Sensori meteo offline",
       "unconfigured": "Nessun sensore meteo configurato"
+    }
+  },
+  "netatmo": {
+    "title": "🌡 Netatmo",
+    "communicationStatus": "Stato comunicazione Netatmo",
+    "noHomes": "Nessuna casa Netatmo",
+    "noValues": "Nessun valore",
+    "home": "Casa Netatmo",
+    "device": "Dispositivo Netatmo",
+    "module": "Modulo Netatmo",
+    "devicesOnline": "{count} dispositivi online",
+    "rooms": {
+      "livingRoom": "Soggiorno",
+      "masterBedroom": "Camera matrimoniale",
+      "bedroom": "Camera da letto",
+      "childrensRoom": "Camera dei bambini",
+      "outdoor": "Esterno",
+      "rainGauge": "Pluviometro",
+      "windSensor": "Anemometro"
+    },
+    "metrics": {
+      "temperature": "Temperatura",
+      "humidity": "Umidità",
+      "pressure": "Pressione",
+      "noise": "Rumore",
+      "rainToday": "Pioggia oggi",
+      "daysSinceLastRain": "Giorni dall'ultima giornata di pioggia",
+      "notYetAvailable": "Dato non ancora disponibile",
+      "windSpeed": "Velocità del vento",
+      "windGust": "Raffica di vento",
+      "windDirection": "Direzione del vento",
+      "indoor": "Interno",
+      "outdoor": "Esterno",
+      "wind": "Vento",
+      "battery": "Batteria"
+    },
+    "status": {
+      "online": "🟢 Netatmo online",
+      "offline": "🔴 Netatmo offline",
+      "authorizationRequired": "🟡 Autorizzazione Netatmo richiesta",
+      "disabled": "Netatmo disabilitato"
     }
   },
   "solar": {
@@ -96,9 +211,9 @@
     "startTime": "Ora di avvio",
     "forcedStopTime": "Ora arresto forzato",
     "temperatureCheckInterval": "Intervallo controllo temperatura (minuti)",
-    "earlyCompletionTemperature": "Temperatura completamento anticipato",
+    "earlyCompletionTemperature": "Temperatura da raggiungere per spegnimento anticipato",
     "earlyCompletionConfirmation": "Tempo conferma (minuti)",
-    "minimumPvProduction": "Produzione FV minima per riscaldamento (W)",
+    "minimumPvProduction": "Soglia produzione FV per riscaldamento (W)",
     "pvRunningCheckInterval": "Intervallo controllo FV in funzione (minuti)",
     "pvConfirmationDelay": "Ritardo conferma FV (minuti)",
     "saveAutomation": "Salva automazione solare",
@@ -143,6 +258,7 @@
     "dashboardTitle": "⚡ Miran Energy Manager",
     "dashboardSubtitle": "Energia in tempo reale",
     "dashboardRefresh": "Aggiornamento automatico ogni 60 secondi",
+    "refreshCountdown": "Prossimo aggiornamento tra {seconds} s",
     "houseConsumption": "Consumo Casa",
     "normalLoads": "Carichi Normali",
     "backupLoads": "Carichi Backup",
@@ -167,6 +283,16 @@
     "response": "Risposta: {response} · {ms} ms",
     "turnOn": "Accendi",
     "turnOff": "Spegni"
+  },
+  "heater": {
+    "reason": {
+      "heating": "🟢 Riscaldamento",
+      "waiting_check": "🔵 In attesa del controllo programmato",
+      "waiting_pv": "🟡 In attesa produzione FV",
+      "pump_off": "🔵 Pompa piscina OFF",
+      "disabled": "⚪ Disabilitato",
+      "communication_error": "🔴 Errore comunicazione"
+    }
   },
   "telegram": {
     "title": "📲 Notifiche Telegram",
@@ -254,10 +380,12 @@
       "temperature": "Temperatura",
       "humidity": "Umidità"
     },
-    "todayMin": "Min oggi",
-    "todayMax": "Max oggi",
-    "periodMin": "Min periodo",
-    "periodMax": "Max periodo",
+    "todayTitle": "📅 Oggi",
+    "allTimeTitle": "🏆 Record assoluti",
+    "minimum": "Minimo",
+    "maximum": "Massimo",
+    "recordedOn": "Registrato il: {date}",
+    "noRecords": "Nessun record disponibile.",
     "graphTitle": "Grafico temperatura",
     "graphHint": "Rotella per zoom, trascina per spostare, passa sopra per i valori esatti.",
     "showGraph": "📈 Mostra grafico",

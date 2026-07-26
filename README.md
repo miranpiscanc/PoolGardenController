@@ -22,7 +22,7 @@ Originally developed for a real residential pool installation, it has evolved in
 - Automatic daily scheduler
 - Manual override
 - Automatic Solar Heating Automation
-- Safe Heater Stop sequence
+- Immediate heater shutdown
 
 ---
 
@@ -44,9 +44,8 @@ Instead it coordinates the operation of the system while leaving thermal and ele
 
 Current safety features include:
 
-- Safe Heater Stop
-- Automatic 60-second cooling cycle
-- Backend-controlled safety sequence
+- Immediate Relay 1 shutdown
+- Continued circulation through the heater after shutdown
 - Browser-independent operation
 - Automatic recovery after browser refresh
 

@@ -1,0 +1,44 @@
+{
+  "houses": [
+    {
+      "id": "cesclans",
+      "display_name": "Cesclans",
+      "enabled": true,
+      "route": "/cesclans",
+      "description": "Current configured MeM house.",
+      "status_label": "Active / Configured",
+      "configured_devices": {
+        "energy": ["goodwe_inverter"],
+        "weather": ["netatmo"],
+        "climate": ["intesis"],
+        "pool": ["pool_controller"]
+      },
+      "providers": {
+        "energy": "goodwe",
+        "weather": "netatmo",
+        "climate": "intesis",
+        "pool": "cesclans_pool"
+      },
+      "modules": [
+        "GoodWe",
+        "Netatmo",
+        "Intesis",
+        "Pool",
+        "Winter Energy",
+        "Weather",
+        "History"
+      ]
+    },
+    {
+      "id": "opicina",
+      "display_name": "Opicina",
+      "enabled": true,
+      "route": "/opicina",
+      "description": "House prepared in the MeM architecture; devices and modules are not configured yet.",
+      "status_label": "Configuration pending",
+      "configured_devices": {},
+      "providers": {},
+      "modules": []
+    }
+  ]
+}

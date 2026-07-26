@@ -4,20 +4,34 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title data-i18n="history.pageTitle"></title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/static/apple-touch-icon-precomposed.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <main id="historyPage" class="wrap">
+  <main id="historyPage" class="wrap" data-initial-location="{{ initial_location|default('opicina') }}" data-locked-location="{{ 'true' if locked_location else 'false' }}">
     <header class="hero">
       <div>
-        <h1 data-i18n="history.title"></h1>
+        <h1>{{ 'Comparisons' if initial_location == 'compare' else ('Storico ' ~ (initial_location|capitalize) if locked_location else 'Storico') }}</h1>
         <p id="appMeta" data-i18n="common.loading"></p>
+        <small class="hero-refresh"><span data-i18n="energy.dashboardRefresh"></span> · <span id="refreshCountdown"></span></small>
       </div>
       <div class="header-actions">
         <div id="languageSelector" class="language-selector"></div>
         <a class="button-link" href="{{ back_href|default('/') }}" data-i18n="{{ back_i18n|default('nav.dashboard') }}"></a>
       </div>
     </header>
+
+    <nav class="row gap nav-actions house-primary-nav" aria-label="Navigazione principale">
+      <a class="button-link {{ 'active' if initial_location == 'opicina' else '' }}" href="{{ viewer_nav.opicina if viewer else '/opicina' }}">🏠 Opicina</a>
+      <a class="button-link {{ 'active' if initial_location == 'cesclans' else '' }}" href="{{ viewer_nav.cesclans if viewer else '/cesclans' }}">🏡 Cesclans</a>
+      <a class="button-link {{ 'active' if initial_location == 'compare' else '' }}" href="{{ viewer_nav.comparisons if viewer else '/comparisons' }}">📊 Comparisons</a>
+      <a class="button-link" href="{{ viewer_nav.winter if viewer else '/winter' }}">❄ Winter Energy</a>
+      <a class="button-link" href="{{ viewer_nav.system if viewer else '/cesclans#settings' }}">⚙ System</a>
+    </nav>
 
     <section class="card history-controls-card">
       <div class="history-button-group" id="historyPeriodButtons">
@@ -26,7 +40,7 @@
         <button type="button" class="history-option" data-period="30d" data-i18n="history.periods.30d"></button>
         <button type="button" class="history-option" data-period="12m" data-i18n="history.periods.12m"></button>
       </div>
-      <div class="history-button-group" id="historyLocationButtons">
+      <div class="history-button-group {{ 'hidden' if locked_location else '' }}" id="historyLocationButtons">
         <button type="button" class="history-option active" data-location="opicina">Opicina</button>
         <button type="button" class="history-option" data-location="cesclans">Cesclans</button>
         <button type="button" class="history-option" data-location="compare" data-i18n="history.locations.compare"></button>

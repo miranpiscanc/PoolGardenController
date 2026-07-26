@@ -1,12 +1,37 @@
 let lastStatus = null;
 let refreshTimer = null;
-let refreshMs = 4000;
+let refreshMs = 60000;
+let refreshCountdownTimer = null;
+let refreshDeadline = Date.now() + refreshMs;
 let currentLanguage = 'en';
 let translations = {};
 let availableLanguages = {};
 const relayCache = {};
 const relayStatusCache = {};
 const pumpDisplayCache = { info: null, bar: null };
+const intesisDeviceCache = new Map();
+const intesisDeviceCards = new Map();
+const intesisGroups = new Map();
+const intesisDeviceGenerations = new Map();
+const houseUI = window.MeMHouseUI || {
+  context: () => ({ id: 'cesclans', name: 'Cesclans', viewer: false }),
+  isCesclans: () => true,
+  netatmoForHouse: data => data || {},
+  weatherForHouse: data => data || {},
+  intesisHouseId: () => 'cesclans',
+  intesisForHouse: devices => Array.isArray(devices) ? devices : []
+};
+const currentHouse = houseUI.context();
+const intesisControlLabels = houseUI.intesisControlLabels || Object.freeze({
+  mode: Object.freeze({}),
+  fan: Object.freeze({})
+});
+const intesisModeOrder = Object.keys(intesisControlLabels.mode);
+const intesisFanOrder = Object.keys(intesisControlLabels.fan);
+const intesisVaneOrder = [
+  'auto/stop', 'manual1', 'manual2', 'manual3', 'manual4', 'manual5',
+  'manual6', 'manual7', 'manual8', 'manual9', 'swing'
+];
 
 function getPath(source, path) {
   return String(path).split('.').reduce((value, key) => (
@@ -19,7 +44,7 @@ function t(path, vars = {}) {
   if (value === undefined || value === null) value = path;
   value = String(value);
   for (const [key, replacement] of Object.entries(vars)) {
-    value = value.replaceAll(`{${key}}`, replacement);
+    value = value.split(`{${key}}`).join(replacement);
   }
   return value;
 }
@@ -30,7 +55,7 @@ function optionalT(path) {
 }
 
 function esc(value) {
-  return String(value ?? '').replace(/[&<>"']/g, c => ({
+  return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, c => ({
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
@@ -48,7 +73,8 @@ function applyTranslations() {
     el.title = t(el.dataset.i18nTitle);
     el.setAttribute('aria-label', t(el.dataset.i18nTitle));
   });
-  const titleKey = document.querySelector('title')?.dataset.i18n;
+  const title = document.querySelector('title');
+  const titleKey = title ? title.dataset.i18n : null;
   if (titleKey) document.title = t(titleKey);
   renderLanguageSelector();
 }
@@ -175,6 +201,535 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
+function setPortalBadge(id, label, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = label;
+  el.className = 'pill ' + cls;
+}
+
+function safeRender(label, fn) {
+  try {
+    fn();
+  } catch (error) {
+    console.error(`Dashboard binding failed: ${label}`, error);
+  }
+}
+
+function portalSection() {
+  return String(window.location.hash || '').replace('#', '') || 'home';
+}
+
+function renderPortalRoute() {
+  const section = portalSection();
+  const pageMap = {
+    netatmo: 'pageNetatmo',
+    weather: 'pageWeather',
+    'air-conditioning': 'pageAirConditioning',
+    ...(houseUI.isCesclans() ? {
+      pool: 'pagePool',
+      energy: 'pageEnergy',
+      settings: 'pageSettings'
+    } : {})
+  };
+  const activePage = pageMap[section];
+  const home = document.getElementById('portalHome');
+  if (home) home.classList.toggle('hidden', !!activePage);
+  document.querySelectorAll('.portal-page').forEach(page => {
+    page.classList.toggle('hidden', page.id !== activePage);
+  });
+  document.querySelectorAll('.portal-section-nav .button-link').forEach(link => {
+    const target = (link.getAttribute('href') || '#').replace('#', '') || 'home';
+    link.classList.toggle('active', target === section);
+  });
+}
+
+function renderPortalSummary(s) {
+  const netatmo = houseUI.netatmoForHouse(s.netatmo || {});
+  const netatmoHomes = Object.keys(netatmo.homes || {}).length;
+  setText('portalNetatmoSummary', netatmoHomes ? `${netatmoHomes} case · ${fmtTime(netatmo.last_successful_poll)}` : t('netatmo.noHomes'));
+  if (netatmo.online || netatmo.status === 'online') setPortalBadge('portalNetatmoBadge', t('netatmo.status.online'), 'ok');
+  else if (netatmo.authorization_required) setPortalBadge('portalNetatmoBadge', t('netatmo.status.authorizationRequired'), 'warn');
+  else setPortalBadge('portalNetatmoBadge', t('netatmo.status.offline'), 'bad');
+
+  const pump = s.pump || {};
+  const pumpLabel = pump.active === true ? t('status.on') : pump.active === false ? t('status.off') : t('status.syncing');
+  setText('portalPoolSummary', `${t('pump.title')} ${pumpLabel} · ${fmtCelsius((s.solar_heating || {}).water_temperature)}`);
+  setPortalBadge('portalPoolBadge', pumpLabel, pump.active === true ? 'ok' : pump.active === false ? 'gray' : 'warn');
+
+  const goodwe = s.goodwe || {};
+  const pvProduction = numericValue(goodwe.pv_production);
+  const houseConsumption = numericValue(goodwe.house_consumption);
+  const availableSurplus = goodwe.available_surplus !== null && goodwe.available_surplus !== undefined ? goodwe.available_surplus : (
+    pvProduction === null || houseConsumption === null ? null : Math.max(0, pvProduction - houseConsumption)
+  );
+  setText('portalEnergySummary', `${t('energy.pvProduction')}: ${fmtPower(goodwe.pv_production)} · ${t('energy.availableSurplus')}: ${fmtPower(availableSurplus)}`);
+  setPortalBadge('portalEnergyBadge', goodwe.status === 'online' ? 'GoodWe online' : 'GoodWe offline', goodwe.status === 'online' ? 'ok' : 'bad');
+
+  const weather = houseUI.weatherForHouse(s.weather || {});
+  const weatherStatus = (weather.communication || {}).status;
+  setText('portalWeatherSummary', `${Object.keys(weather.locations || {}).length} località · ${fmtTime(weather.last_update)}`);
+  if (weatherStatus === 'online') setPortalBadge('portalWeatherBadge', t('weather.status.online'), 'ok');
+  else if (weatherStatus === 'partial') setPortalBadge('portalWeatherBadge', t('weather.status.partial'), 'warn');
+  else if (weatherStatus === 'offline') setPortalBadge('portalWeatherBadge', t('weather.status.offline'), 'bad');
+  else setPortalBadge('portalWeatherBadge', t('weather.status.unconfigured'), 'gray');
+}
+
+function intesisGroup(device) {
+  return houseUI.intesisHouseId(device);
+}
+
+function ensureIntesisGroups() {
+  const root = document.getElementById('airConditioningGroups');
+  if (!root || intesisGroups.size) return;
+  const groups = [[currentHouse.id, `airConditioning.groups.${currentHouse.id}`]];
+  for (const [key, titleKey] of groups) {
+    const section = document.createElement('section');
+    section.className = 'air-group hidden';
+    section.innerHTML = `<h2 data-i18n="${esc(titleKey)}"></h2><div class="air-device-grid"></div>`;
+    root.appendChild(section);
+    intesisGroups.set(key, {
+      section,
+      grid: section.querySelector('.air-device-grid')
+    });
+  }
+  applyTranslations();
+}
+
+function intesisMetric(labelKey, field, extraClass = '') {
+  return `<div class="air-metric ${esc(extraClass)}"><span data-i18n="${esc(labelKey)}"></span><strong data-air-field="${esc(field)}">--</strong></div>`;
+}
+
+function createIntesisDeviceCard(deviceId) {
+  const card = document.createElement('article');
+  card.className = 'card air-device-card';
+  card.dataset.deviceId = deviceId;
+  card.innerHTML = `
+    <div class="air-device-head">
+      <div>
+        <h3 data-air-field="name">--</h3>
+      </div>
+      <div data-air-field="power" class="pill gray">--</div>
+    </div>
+    <div class="air-room-temperature">
+      <span data-i18n="airConditioning.roomTemperature"></span>
+      <strong data-air-field="room_temperature">--</strong>
+    </div>
+    <div class="air-metrics">
+      ${intesisMetric('airConditioning.mode', 'mode')}
+      ${intesisMetric('airConditioning.targetTemperature', 'target_temperature')}
+      ${intesisMetric('airConditioning.fanSpeed', 'fan_speed')}
+      ${intesisMetric('airConditioning.verticalVane', 'vertical_vane')}
+      ${intesisMetric('airConditioning.horizontalVane', 'horizontal_vane')}
+      ${intesisMetric('airConditioning.wifi', 'wifi')}
+      ${intesisMetric('airConditioning.workingHours', 'working_hours')}
+      ${intesisMetric('airConditioning.currentError', 'error', 'air-error-metric')}
+    </div>
+    <fieldset class="air-controls" data-air-controls>
+      <div class="air-control-group">
+        <span class="air-control-label" data-i18n="airConditioning.power"></span>
+        <div class="air-button-group">
+          <button class="on air-power-button" type="button" data-air-power="true" data-i18n="airConditioning.turnOn">${esc(t('airConditioning.turnOn'))}</button>
+          <button class="off air-power-button" type="button" data-air-power="false" data-i18n="airConditioning.turnOff">${esc(t('airConditioning.turnOff'))}</button>
+        </div>
+      </div>
+      <div class="air-control-group" data-air-control="mode">
+        <span class="air-control-label" data-i18n="airConditioning.mode"></span>
+        <div class="air-button-group">
+          ${intesisModeOrder.map(value => `<button type="button" data-air-mode="${value}">${intesisControlLabel('mode', value)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="air-control-group" data-air-control="temperature">
+        <span class="air-control-label" data-i18n="airConditioning.targetTemperature"></span>
+        <div class="air-temperature-control">
+          <button type="button" data-air-temperature="-1" aria-label="−1 °C">−</button>
+          <strong data-air-field="temperature_control">--</strong>
+          <button type="button" data-air-temperature="1" aria-label="+1 °C">+</button>
+        </div>
+      </div>
+      <div class="air-control-group" data-air-control="fan">
+        <span class="air-control-label" data-i18n="airConditioning.fanSpeed"></span>
+        <div class="air-button-group">
+          ${intesisFanOrder.map(value => `<button type="button" data-air-fan="${value}">${intesisControlLabel('fan', value)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="air-vane-controls">
+        <div class="air-control-group" data-air-control="vertical_vane">
+          <span class="air-control-label" data-i18n="airConditioning.verticalVane"></span>
+          <div class="air-button-group">
+            ${intesisVaneOrder.map(value => `<button type="button" data-air-vertical-vane="${value}">${intesisVaneLabel(value)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="air-control-group" data-air-control="horizontal_vane">
+          <span class="air-control-label" data-i18n="airConditioning.horizontalVane"></span>
+          <div class="air-button-group">
+            ${intesisVaneOrder.map(value => `<button type="button" data-air-horizontal-vane="${value}">${intesisVaneLabel(value)}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+    </fieldset>
+    <div class="air-command-status" data-air-command-status aria-live="polite"></div>
+    <div class="air-device-footer"><span data-i18n="common.lastUpdate"></span> <strong data-air-field="last_update">--:--:--</strong></div>
+    <div class="air-device-spinner hidden" data-air-spinner><span class="spinner"></span><span data-i18n="airConditioning.sending"></span></div>`;
+
+  card.querySelectorAll('[data-air-power]').forEach(button => {
+    button.addEventListener('click', () => sendIntesisCommand(
+      deviceId,
+      '/api/intesis/power',
+      { power: button.dataset.airPower === 'true' }
+    ));
+  });
+  card.querySelectorAll('[data-air-mode]').forEach(button => {
+    button.addEventListener('click', () => sendIntesisCommand(
+      deviceId,
+      '/api/intesis/mode',
+      { mode: button.dataset.airMode }
+    ));
+  });
+  card.querySelectorAll('[data-air-fan]').forEach(button => {
+    button.addEventListener('click', () => sendIntesisCommand(
+      deviceId,
+      '/api/intesis/fan',
+      { speed: button.dataset.airFan }
+    ));
+  });
+  card.querySelectorAll('[data-air-temperature]').forEach(button => {
+    button.addEventListener('click', () => adjustIntesisTemperature(
+      deviceId,
+      Number(button.dataset.airTemperature)
+    ));
+  });
+  card.querySelectorAll('[data-air-vertical-vane]').forEach(button => {
+    button.addEventListener('click', () => sendIntesisCommand(
+      deviceId,
+      '/api/intesis/vertical_vane',
+      { position: button.dataset.airVerticalVane }
+    ));
+  });
+  card.querySelectorAll('[data-air-horizontal-vane]').forEach(button => {
+    button.addEventListener('click', () => sendIntesisCommand(
+      deviceId,
+      '/api/intesis/horizontal_vane',
+      { position: button.dataset.airHorizontalVane }
+    ));
+  });
+  intesisDeviceCards.set(deviceId, card);
+  applyTranslations();
+  return card;
+}
+
+function setIntesisField(card, field, value) {
+  const element = card.querySelector(`[data-air-field="${field}"]`);
+  if (element) element.textContent = value;
+}
+
+function intesisText(value) {
+  if (value === null || value === undefined || value === '') return '--';
+  return String(value).split('_').join(' ').toUpperCase();
+}
+
+function intesisControlLabel(control, value) {
+  const labels = intesisControlLabels[control] || {};
+  return labels[String(value || '').toLowerCase()] || intesisText(value);
+}
+
+function intesisVaneLabel(value) {
+  if (value === 'auto/stop') return 'AUTO';
+  if (value === 'swing') return 'SWING';
+  return value.replace('manual', '');
+}
+
+function intesisWifiSignal(value) {
+  const rssi = numericValue(value);
+  if (rssi === null) return '--';
+  if (rssi >= -50) return `📶 █████ · ${t('airConditioning.wifiLevels.excellent')}`;
+  if (rssi >= -60) return `📶 ████ · ${t('airConditioning.wifiLevels.good')}`;
+  if (rssi >= -70) return `📶 ███ · ${t('airConditioning.wifiLevels.medium')}`;
+  if (rssi >= -80) return `📶 ██ · ${t('airConditioning.wifiLevels.weak')}`;
+  return `📶 █ · ${t('airConditioning.wifiLevels.veryWeak')}`;
+}
+
+function intesisCapabilities(values, allowed, current = null) {
+  const supported = new Set(
+    Array.isArray(values)
+      ? values.map(value => String(value).toLowerCase()).filter(value => allowed.includes(value))
+      : []
+  );
+  current = String(current || '').toLowerCase();
+  if (allowed.includes(current)) supported.add(current);
+  return supported;
+}
+
+function updateIntesisControlButtons(card, selector, supported, current) {
+  card.querySelectorAll(selector).forEach(button => {
+    const value = String(
+      button.dataset.airMode
+      || button.dataset.airFan
+      || button.dataset.airVerticalVane
+      || button.dataset.airHorizontalVane
+      || ''
+    ).toLowerCase();
+    button.classList.toggle('hidden', !supported.has(value));
+    button.classList.toggle('active', value === current);
+  });
+}
+
+function updateIntesisDevice(device) {
+  if (!device || device.id === null || device.id === undefined) return;
+  ensureIntesisGroups();
+  const deviceId = String(device.id);
+  const previous = intesisDeviceCache.get(deviceId) || {};
+  const previousUpdate = new Date(previous.last_update || 0).getTime();
+  const incomingUpdate = new Date(device.last_update || 0).getTime();
+  if (
+    Number.isFinite(previousUpdate)
+    && Number.isFinite(incomingUpdate)
+    && incomingUpdate < previousUpdate
+  ) return;
+  const merged = { ...previous, ...device };
+  if (device.supported_modes == null && previous.supported_modes != null) merged.supported_modes = previous.supported_modes;
+  if (device.supported_fan_speeds == null && previous.supported_fan_speeds != null) merged.supported_fan_speeds = previous.supported_fan_speeds;
+  intesisDeviceCache.set(deviceId, merged);
+
+  const card = intesisDeviceCards.get(deviceId) || createIntesisDeviceCard(deviceId);
+  const group = intesisGroups.get(intesisGroup(merged));
+  if (group && card.parentElement !== group.grid) group.grid.appendChild(card);
+  card.classList.remove('hidden');
+  card.classList.toggle('air-device-on', merged.power === true);
+  card.classList.toggle('air-device-off', merged.power === false);
+
+  setIntesisField(card, 'name', merged.name || t('airConditioning.unnamedDevice'));
+  const power = card.querySelector('[data-air-field="power"]');
+  if (power) {
+    power.textContent = merged.power === true ? `🟢 ${t('status.on')}` : merged.power === false ? `⚪ ${t('status.off')}` : t('status.syncing');
+    power.className = 'pill ' + (merged.power === true ? 'ok' : merged.power === false ? 'gray' : 'warn');
+  }
+  card.querySelectorAll('[data-air-power]').forEach(button => {
+    const buttonPower = button.dataset.airPower === 'true';
+    button.classList.toggle('active', merged.power === buttonPower);
+  });
+  setIntesisField(card, 'room_temperature', fmtCelsius(merged.room_temperature));
+  setIntesisField(card, 'target_temperature', fmtCelsius(merged.target_temperature));
+  setIntesisField(card, 'temperature_control', fmtCelsius(merged.target_temperature));
+  setIntesisField(card, 'mode', intesisControlLabel('mode', merged.mode));
+  setIntesisField(card, 'fan_speed', intesisControlLabel('fan', merged.fan_speed));
+  setIntesisField(card, 'vertical_vane', intesisText(merged.vertical_vane));
+  setIntesisField(card, 'horizontal_vane', intesisText(merged.horizontal_vane));
+  setIntesisField(card, 'wifi', intesisWifiSignal(
+    merged.rssi !== undefined ? merged.rssi : merged.wifi
+  ));
+  const hours = numericValue(merged.working_hours);
+  setIntesisField(card, 'working_hours', hours === null ? '--' : `${hours} h`);
+  const errorMessage = String(merged.error || '').trim();
+  const noErrorCode = merged.error_code !== null && merged.error_code !== undefined && Number(merged.error_code) === 0;
+  const noErrorMessage = errorMessage.toLowerCase() === 'h00: no abnormality detected';
+  const hasErrorCode = merged.error_code !== null && merged.error_code !== undefined && Number(merged.error_code) !== 0;
+  const hasActualError = !noErrorCode && !noErrorMessage && (Boolean(errorMessage) || hasErrorCode);
+  const error = hasActualError
+    ? (errorMessage || `${t('airConditioning.errorCode')} ${merged.error_code}`)
+    : t('airConditioning.noError');
+  setIntesisField(card, 'error', error);
+  const errorMetric = card.querySelector('.air-error-metric');
+  const errorField = card.querySelector('[data-air-field="error"]');
+  if (errorMetric) {
+    errorMetric.classList.toggle('has-error', hasActualError);
+    errorMetric.classList.toggle('no-error', !hasActualError);
+  }
+  if (errorField) errorField.classList.toggle('has-error', hasActualError);
+  setIntesisField(card, 'last_update', fmtTime(merged.last_update));
+
+  const mode = String(merged.mode || '').toLowerCase();
+  const fan = String(merged.fan_speed || '').toLowerCase();
+  const verticalVane = String(merged.vertical_vane || '').toLowerCase();
+  const horizontalVane = String(merged.horizontal_vane || '').toLowerCase();
+  const modeValues = intesisCapabilities(merged.supported_modes, intesisModeOrder, mode);
+  const fanValues = intesisCapabilities(merged.supported_fan_speeds, intesisFanOrder, fan);
+  const verticalVaneValues = intesisCapabilities(
+    merged.supported_vertical_vanes,
+    intesisVaneOrder,
+    verticalVane
+  );
+  const horizontalVaneValues = intesisCapabilities(
+    merged.supported_horizontal_vanes,
+    intesisVaneOrder,
+    horizontalVane
+  );
+  const modeControl = card.querySelector('[data-air-control="mode"]');
+  const fanControl = card.querySelector('[data-air-control="fan"]');
+  const verticalVaneControl = card.querySelector('[data-air-control="vertical_vane"]');
+  const horizontalVaneControl = card.querySelector('[data-air-control="horizontal_vane"]');
+  modeControl.classList.toggle('hidden', modeValues.size === 0);
+  fanControl.classList.toggle('hidden', fanValues.size === 0);
+  verticalVaneControl.classList.toggle(
+    'hidden',
+    merged.supports_vertical_vane !== true || verticalVaneValues.size === 0
+  );
+  horizontalVaneControl.classList.toggle(
+    'hidden',
+    merged.supports_horizontal_vane !== true || horizontalVaneValues.size === 0
+  );
+  updateIntesisControlButtons(card, '[data-air-mode]', modeValues, mode);
+  updateIntesisControlButtons(card, '[data-air-fan]', fanValues, fan);
+  updateIntesisControlButtons(card, '[data-air-vertical-vane]', verticalVaneValues, verticalVane);
+  updateIntesisControlButtons(card, '[data-air-horizontal-vane]', horizontalVaneValues, horizontalVane);
+  const targetTemperature = numericValue(merged.target_temperature);
+  const minimumTemperature = numericValue(merged.minimum_target_temperature);
+  const maximumTemperature = numericValue(merged.maximum_target_temperature);
+  card.querySelector('[data-air-control="temperature"]').classList.toggle(
+    'hidden',
+    targetTemperature === null
+  );
+  card.querySelector('[data-air-temperature="-1"]').disabled = (
+    minimumTemperature !== null && targetTemperature <= minimumTemperature
+  );
+  card.querySelector('[data-air-temperature="1"]').disabled = (
+    maximumTemperature !== null && targetTemperature >= maximumTemperature
+  );
+}
+
+function latestIntesisUpdate(devices) {
+  return devices.reduce((latest, device) => {
+    if (!device || !device.last_update) return latest;
+    const timestamp = new Date(device.last_update).getTime();
+    return Number.isNaN(timestamp) || timestamp <= latest.time ? latest : { time: timestamp, value: device.last_update };
+  }, { time: 0, value: null }).value;
+}
+
+function renderIntesisSummary(devices) {
+  const total = devices.length;
+  const on = devices.filter(device => device.power === true).length;
+  const off = devices.filter(device => device.power === false).length;
+  const lastUpdate = latestIntesisUpdate(devices);
+  setText('portalAirTotal', total);
+  setText('portalAirOn', on);
+  setText('portalAirOff', off);
+  setText('portalAirLastUpdate', fmtTime(lastUpdate));
+  const status = document.getElementById('airConditioningStatus');
+  if (status) {
+    status.textContent = total ? t('airConditioning.available', { count: total }) : t('airConditioning.noDevices');
+    status.className = 'pill ' + (total ? 'ok' : 'warn');
+  }
+}
+
+function renderIntesisDevices(devices, requestGenerations = null) {
+  devices = houseUI.intesisForHouse(devices);
+  ensureIntesisGroups();
+  const seen = new Set();
+  for (const device of devices) {
+    if (!device || device.id === null || device.id === undefined) continue;
+    const deviceId = String(device.id);
+    seen.add(deviceId);
+    const card = intesisDeviceCards.get(deviceId);
+    const requestGeneration = requestGenerations
+      ? (requestGenerations.get(deviceId) || 0)
+      : null;
+    const currentGeneration = intesisDeviceGenerations.get(deviceId) || 0;
+    if (
+      (card && card.classList.contains('is-busy'))
+      || (requestGeneration !== null && requestGeneration !== currentGeneration)
+    ) continue;
+    updateIntesisDevice(device);
+  }
+  intesisDeviceCards.forEach((card, deviceId) => card.classList.toggle('hidden', !seen.has(deviceId)));
+  intesisGroups.forEach(group => {
+    const visibleCards = Array.from(group.grid.children).some(card => !card.classList.contains('hidden'));
+    group.section.classList.toggle('hidden', !visibleCards);
+  });
+  const empty = document.getElementById('airConditioningEmpty');
+  if (empty) {
+    empty.textContent = t(devices.length ? 'airConditioning.loading' : 'airConditioning.noDevices');
+    empty.classList.toggle('hidden', devices.length > 0);
+  }
+  renderIntesisSummary(devices.map(device => (
+    intesisDeviceCache.get(String(device.id)) || device
+  )));
+}
+
+function renderIntesisFailure(error) {
+  const status = document.getElementById('airConditioningStatus');
+  if (status) {
+    status.textContent = t('airConditioning.unavailable');
+    status.className = 'pill bad';
+  }
+  const empty = document.getElementById('airConditioningEmpty');
+  if (empty && intesisDeviceCache.size === 0) {
+    empty.textContent = t('airConditioning.loadError', { error: error.message || error });
+    empty.classList.remove('hidden');
+  }
+}
+
+async function refreshIntesis() {
+  const requestGenerations = new Map(intesisDeviceGenerations);
+  const devices = await api('/api/intesis/status');
+  if (!Array.isArray(devices)) throw new Error(t('airConditioning.invalidResponse'));
+  renderIntesisDevices(devices, requestGenerations);
+}
+
+function setIntesisCardBusy(card, busy) {
+  card.classList.toggle('is-busy', busy);
+  card.querySelector('[data-air-controls]').disabled = busy;
+  card.querySelector('[data-air-spinner]').classList.toggle('hidden', !busy);
+}
+
+async function sendIntesisCommand(deviceId, endpoint, values) {
+  deviceId = String(deviceId);
+  const card = intesisDeviceCards.get(deviceId);
+  if (!card || card.classList.contains('is-busy')) return;
+  intesisDeviceGenerations.set(
+    deviceId,
+    (intesisDeviceGenerations.get(deviceId) || 0) + 1
+  );
+  const status = card.querySelector('[data-air-command-status]');
+  setIntesisCardBusy(card, true);
+  status.textContent = '';
+  status.className = 'air-command-status';
+  try {
+    const result = await api(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId, ...values })
+    });
+    if (!result || result.ok !== true) throw new Error(t('airConditioning.commandFailed'));
+    if (result.device) {
+      updateIntesisDevice(result.device);
+      renderIntesisSummary(Array.from(intesisDeviceCache.values()));
+    } else {
+      await refreshIntesis();
+    }
+    status.textContent = t('airConditioning.commandCompleted');
+    status.className = 'air-command-status success';
+  } catch (error) {
+    status.textContent = error.message || t('airConditioning.commandFailed');
+    status.className = 'air-command-status error';
+  } finally {
+    setIntesisCardBusy(card, false);
+    intesisDeviceGenerations.set(
+      deviceId,
+      (intesisDeviceGenerations.get(deviceId) || 0) + 1
+    );
+  }
+}
+
+function adjustIntesisTemperature(deviceId, delta) {
+  const device = intesisDeviceCache.get(String(deviceId)) || {};
+  const current = numericValue(device.target_temperature);
+  if (current === null) return;
+  const minimum = numericValue(device.minimum_target_temperature);
+  const maximum = numericValue(device.maximum_target_temperature);
+  const currentTenths = Math.round(current * 10);
+  const deltaTenths = Math.round(Number(delta) * 10);
+  let targetTenths = currentTenths + deltaTenths;
+  if (minimum !== null) {
+    targetTenths = Math.max(targetTenths, Math.round(minimum * 10));
+  }
+  if (maximum !== null) {
+    targetTenths = Math.min(targetTenths, Math.round(maximum * 10));
+  }
+  const temperature = targetTenths / 10;
+  if (temperature === current) return;
+  sendIntesisCommand(deviceId, '/api/intesis/temperature', { temperature });
+}
+
 function renderSmartLoadsState(state = 'enabled') {
   const el = document.getElementById('goodweSmartLoads');
   if (!el) return;
@@ -255,62 +810,112 @@ function pumpProgress(pump) {
 }
 
 async function api(url, options) {
-  const r = await fetch(url, options);
+  const r = await fetch(url, { cache: 'no-store', ...(options || {}) });
   return await r.json();
 }
 
 function scheduleRefresh(s) {
-  const appConfig = (s.config && s.config.app) || {};
-  const safeStop = ((s.runtime || {}).heater_safe_stop) || {};
-  const heaterRunning = !!((s.heater_statistics || {}).active_start);
-  const nextRefreshMs = (safeStop.running || safeStop.state === 'COMPLETED' || heaterRunning) ? 1000 : Number(appConfig.poll_seconds || 30) * 1000;
-  if (nextRefreshMs !== refreshMs || !refreshTimer) {
+  const nextRefreshMs = Math.max(60000, Number(s.refresh_seconds || 60) * 1000);
+  if (nextRefreshMs !== refreshMs) {
     refreshMs = nextRefreshMs;
-    if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(refreshCurrentPage, refreshMs);
   }
+}
+
+function scheduleNextRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  resetRefreshCountdown();
+  refreshTimer = setTimeout(async () => {
+    refreshTimer = null;
+    refreshDeadline = Date.now();
+    renderRefreshCountdown();
+    try {
+      await refreshCurrentPage();
+    } finally {
+      scheduleNextRefresh();
+    }
+  }, refreshMs);
+}
+
+function renderRefreshCountdown() {
+  const el = document.getElementById('refreshCountdown');
+  if (!el) return;
+  const seconds = Math.max(0, Math.ceil((refreshDeadline - Date.now()) / 1000));
+  el.textContent = t('energy.refreshCountdown', { seconds });
+  renderGardenLightsCountdown();
+}
+
+function resetRefreshCountdown() {
+  refreshDeadline = Date.now() + refreshMs;
+  renderRefreshCountdown();
+  if (!refreshCountdownTimer) refreshCountdownTimer = setInterval(renderRefreshCountdown, 1000);
 }
 
 async function refresh() {
   try {
     const s = await api('/api/status');
     lastStatus = s;
-    scheduleRefresh(s);
-    setAppMeta(s);
-    setLastRefresh((s.runtime || {}).last_poll);
-    const devices = s.devices || {};
-    const allOk = Object.values(devices).length && Object.values(devices).every(d => d.ok);
-    const gs = document.getElementById('globalStatus');
-    gs.textContent = allOk ? t('status.online') : t('status.checkNetwork');
-    gs.className = 'pill ' + (allOk ? 'ok' : 'bad');
-    const pump = s.pump;
-    const startTimeField = document.getElementById('startTime');
-    if (document.activeElement !== startTimeField) startTimeField.value = pump.start_time || '09:00';
-    const durationField = document.getElementById('duration');
-    if (document.activeElement !== durationField) durationField.value = pump.duration_hours || 6;
-    document.getElementById('mode').value = pump.mode || 'auto';
-    document.getElementById('pumpMode').textContent = t(`pump.modeBadge.${pump.mode || 'auto'}`);
-    const pumpKey = `${pump.device}:${pump.relay}`;
-    const [pl, pc] = relayLabel(pumpKey, pump.active);
-    const ps = document.getElementById('pumpState');
-    ps.textContent = pl;
-    ps.className = 'state ' + pc;
-    if (confirmedRelay(pump.active) || !pumpDisplayCache.info) pumpDisplayCache.info = pumpInfoText(pump, s);
-    document.getElementById('pumpInfo').textContent = pumpDisplayCache.info;
-    if (confirmedRelay(pump.active) || pumpDisplayCache.bar === null) pumpDisplayCache.bar = pumpProgress(pump);
-    document.getElementById('bar').style.width = pumpDisplayCache.bar + '%';
-    renderTemperatures(s);
-    renderWeather(s);
-    renderSolarHeating(s);
-    renderGoodWeDashboard(s);
-    renderTelegramNotifications(s);
-    renderCards(s);
-    renderDiag(s);
+    safeRender('schedule refresh', () => scheduleRefresh(s));
+    safeRender('app metadata', () => setAppMeta(s));
+    safeRender('last refresh', () => setLastRefresh((s.runtime || {}).last_poll));
+    safeRender('global status', () => {
+      const devices = s.devices || {};
+      const scopedNetatmo = houseUI.netatmoForHouse(s.netatmo || {});
+      const scopedWeather = houseUI.weatherForHouse(s.weather || {});
+      const allOk = houseUI.isCesclans()
+        ? (Object.values(devices).length && Object.values(devices).every(d => d.ok))
+        : (Object.keys(scopedNetatmo.homes || {}).length > 0 || Object.keys(scopedWeather.locations || {}).length > 0);
+      const gs = document.getElementById('globalStatus');
+      if (!gs) return;
+      gs.textContent = allOk ? t('status.online') : t('status.checkNetwork');
+      gs.className = 'pill ' + (allOk ? 'ok' : 'bad');
+    });
+    if (houseUI.isCesclans()) safeRender('pump', () => renderPump(s));
+    if (houseUI.isCesclans()) safeRender('temperatures', () => renderTemperatures(s));
+    safeRender('weather', () => renderWeather(s));
+    safeRender('netatmo', () => renderNetatmo(s));
+    safeRender('home summary', () => renderPortalSummary(s));
+    safeRender('portal route', renderPortalRoute);
+    if (houseUI.isCesclans()) safeRender('solar heating', () => renderSolarHeating(s));
+    if (houseUI.isCesclans()) safeRender('goodwe dashboard', () => renderGoodWeDashboard(s));
+    if (houseUI.isCesclans()) safeRender('telegram notifications', () => renderTelegramNotifications(s));
+    if (houseUI.isCesclans()) safeRender('relay cards', () => renderCards(s));
+    safeRender('diagnostics', () => renderDiag(s));
+    try {
+      await refreshIntesis();
+    } catch (error) {
+      console.error('Intesis refresh failed', error);
+      renderIntesisFailure(error);
+    }
   } catch (e) {
     const gs = document.getElementById('globalStatus');
-    gs.textContent = t('status.serverUnreachable');
-    gs.className = 'pill bad';
+    if (gs) {
+      gs.textContent = t('status.serverUnreachable');
+      gs.className = 'pill bad';
+    }
   }
+}
+
+function renderPump(s) {
+  const pump = s.pump || {};
+  const startTimeField = document.getElementById('startTime');
+  if (startTimeField && document.activeElement !== startTimeField) startTimeField.value = pump.start_time || '09:00';
+  const durationField = document.getElementById('duration');
+  if (durationField && document.activeElement !== durationField) durationField.value = pump.duration_hours || 6;
+  const mode = document.getElementById('mode');
+  if (mode) mode.value = pump.mode || 'auto';
+  setText('pumpMode', t(`pump.modeBadge.${pump.mode || 'auto'}`));
+  const pumpKey = `${pump.device || 'pool'}:${pump.relay || '2'}`;
+  const [pl, pc] = relayLabel(pumpKey, pump.active);
+  const ps = document.getElementById('pumpState');
+  if (ps) {
+    ps.textContent = pl;
+    ps.className = 'state ' + pc;
+  }
+  if (confirmedRelay(pump.active) || !pumpDisplayCache.info) pumpDisplayCache.info = pumpInfoText(pump, s);
+  setText('pumpInfo', pumpDisplayCache.info);
+  if (confirmedRelay(pump.active) || pumpDisplayCache.bar === null) pumpDisplayCache.bar = pumpProgress(pump);
+  const bar = document.getElementById('bar');
+  if (bar) bar.style.width = pumpDisplayCache.bar + '%';
 }
 
 function renderTemperatureValue(id, sensor) {
@@ -360,8 +965,33 @@ function weatherMetricLabel(key, metric) {
   return optionalT(`weather.metrics.${key}`) || (metric && metric.label) || key;
 }
 
+function weatherCodeInfo(code) {
+  if (code === 0) return ['☀️', 'clear'];
+  if ([1, 2, 3].includes(code)) return ['⛅', 'partlyCloudy'];
+  if ([45, 48].includes(code)) return ['🌫️', 'fog'];
+  if ([51, 53, 55, 56, 57].includes(code)) return ['🌦️', 'drizzle'];
+  if ([61, 63, 65, 66, 67].includes(code)) return ['🌧️', 'rain'];
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return ['🌨️', 'snow'];
+  if ([80, 81, 82].includes(code)) return ['🌦️', 'showers'];
+  if ([95, 96, 99].includes(code)) return ['⛈️', 'thunderstorm'];
+  return ['🌤️', 'unknown'];
+}
+
+function renderDailyForecast(forecast) {
+  if (!forecast || !forecast.online) {
+    return `<div class="weather-forecast offline">${esc(t('weather.forecastUnavailable'))}</div>`;
+  }
+  const info = weatherCodeInfo(Number(forecast.weather_code));
+  const min = `${Number(forecast.temperature_min).toFixed(1)} °C`;
+  const max = `${Number(forecast.temperature_max).toFixed(1)} °C`;
+  const probability = `${Math.round(Number(forecast.precipitation_probability || 0))} %`;
+  const amount = `${Number(forecast.precipitation_sum || 0).toFixed(1)} mm`;
+  const speed = `${Number(forecast.wind_speed_max || 0).toFixed(1)} km/h`;
+  return `<div class="weather-forecast"><div class="weather-forecast-title">${esc(t('weather.todayForecast'))}</div><div class="weather-forecast-condition"><span>${info[0]}</span><strong>${esc(t(`weather.conditions.${info[1]}`))}</strong></div><div class="weather-forecast-details"><span>🌡 ${esc(t('weather.temperatureRange', { min, max }))}</span><span>🌧 ${esc(t('weather.rainForecast', { probability, amount }))}</span><span>💨 ${esc(t('weather.windForecast', { speed }))}</span></div></div>`;
+}
+
 function renderWeather(s) {
-  const data = s.weather || {};
+  const data = houseUI.weatherForHouse(s.weather || {});
   const root = document.getElementById('weatherLocations');
   if (root) {
     const locations = data.locations || {};
@@ -372,7 +1002,7 @@ function renderWeather(s) {
         const cls = offline ? ' class="offline"' : '';
         return `<div class="weather-metric"><span>${esc(weatherMetricLabel(metricKey, metric))}</span><strong${cls}>${esc(value)}</strong></div>`;
       }).join('');
-      return `<section class="weather-location"><h3>${esc(t('weather.location', { location: location.label || locationKey }))}</h3><div class="weather-metrics">${metrics}</div></section>`;
+      return `<section class="weather-location"><h3>${esc(t('weather.location', { location: location.label || locationKey }))}</h3><div class="weather-metrics">${metrics}</div>${renderDailyForecast(location.forecast)}</section>`;
     }).join('');
   }
   const last = document.getElementById('weatherLastUpdate');
@@ -392,6 +1022,220 @@ function renderWeather(s) {
   } else {
     comm.textContent = t('weather.status.unconfigured');
     comm.className = 'pill gray';
+  }
+}
+
+function fmtNetatmoMetric(metric) {
+  const value = metric && metric.value;
+  if (value === null || value === undefined || value === '') return '--';
+  const number = numericValue(value);
+  const unit = (metric && metric.unit) || '';
+  if (number === null) return String(value) + (unit ? ` ${unit}` : '');
+  const decimals = unit === 'ppm' || unit === '%' || unit === '°' || unit === 'dB' ? 0 : 1;
+  return number.toFixed(decimals) + (unit ? ` ${unit}` : '');
+}
+
+function netatmoSlug(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function netatmoFriendlyDevice(device) {
+  const home = netatmoSlug(device.home_name);
+  const name = netatmoSlug(device.name);
+  const type = String(device.type || '');
+  const friendly = {
+    opicina: {
+      salon: ['🛋️', t('netatmo.rooms.livingRoom')],
+      soggiorno: ['🛋️', t('netatmo.rooms.livingRoom')],
+      spalnica: ['🛏️', t('netatmo.rooms.masterBedroom')],
+      grascina: ['👧', t('netatmo.rooms.childrensRoom')],
+      balkon: ['🌳', t('netatmo.rooms.outdoor')],
+      outdoor: ['🌳', t('netatmo.rooms.outdoor')],
+      pluviometro: ['🌧️', t('netatmo.rooms.rainGauge')],
+      rain: ['🌧️', t('netatmo.rooms.rainGauge')],
+      anemometro: ['💨', t('netatmo.rooms.windSensor')],
+      wind: ['💨', t('netatmo.rooms.windSensor')]
+    },
+    cesclans: {
+      spalnica: ['🛏️', t('netatmo.rooms.masterBedroom')],
+      'soba otroci': ['👦', t('netatmo.rooms.childrensRoom')],
+      terasa: ['🌳', t('netatmo.rooms.outdoor')],
+      outdoor: ['🌳', t('netatmo.rooms.outdoor')],
+      pluviometro: ['🌧️', t('netatmo.rooms.rainGauge')],
+      rain: ['🌧️', t('netatmo.rooms.rainGauge')]
+    }
+  };
+  const byHome = friendly[home] || {};
+  for (const [key, value] of Object.entries(byHome)) {
+    if (name.includes(key)) return { icon: value[0], label: value[1] };
+  }
+  if (type === 'NAModule1') return { icon: '🌳', label: t('netatmo.rooms.outdoor') };
+  if (type === 'NAModule3') return { icon: '🌧️', label: t('netatmo.rooms.rainGauge') };
+  if (type === 'NAModule2') return { icon: '💨', label: t('netatmo.rooms.windSensor') };
+  if (name.includes('bed') || name.includes('spalnica')) return { icon: '🛏️', label: t('netatmo.rooms.bedroom') };
+  if (name.includes('child') || name.includes('otrok') || name.includes('otroci')) return { icon: '👧', label: t('netatmo.rooms.childrensRoom') };
+  if (type === 'NAMain') return { icon: '🛋️', label: t('netatmo.rooms.livingRoom') };
+  return { icon: '🏠', label: device.name || t('netatmo.device') };
+}
+
+function netatmoMetricInfo(key) {
+  return {
+    temperature: ['🌡', t('netatmo.metrics.temperature')],
+    humidity: ['💧', t('netatmo.metrics.humidity')],
+    co2: ['🫁', 'CO₂'],
+    pressure: ['🌡', t('netatmo.metrics.pressure')],
+    noise: ['🌬', t('netatmo.metrics.noise')],
+    rain_today: ['🌧️', t('netatmo.metrics.rainToday')],
+    wind_speed: ['💨', t('netatmo.metrics.windSpeed')],
+    gust: ['💨', t('netatmo.metrics.windGust')],
+    direction: ['🧭', t('netatmo.metrics.windDirection')]
+  }[key] || ['•', key];
+}
+
+function netatmoBattery(device) {
+  const value = numericValue(device && device.battery);
+  if (value === null || value < 0 || value > 100) return null;
+  if (value > 70) return { label: `🟢 ${Math.round(value)} %`, cls: 'ok' };
+  if (value >= 40) return { label: `🟡 ${Math.round(value)} %`, cls: 'warn' };
+  if (value >= 20) return { label: `🟠 ${Math.round(value)} %`, cls: 'orange' };
+  return { label: `🔴 ${Math.round(value)} %`, cls: 'bad' };
+}
+
+function netatmoDevicesForHome(data, home) {
+  const stations = data.stations || {};
+  const modules = data.modules || {};
+  const devices = [];
+  (home.stations || []).forEach(stationId => {
+    const station = stations[stationId];
+    if (!station) return;
+    devices.push(station);
+    (station.modules || []).forEach(moduleId => {
+      if (modules[moduleId]) devices.push(modules[moduleId]);
+    });
+  });
+  return devices;
+}
+
+function netatmoDeviceMetric(device, keys) {
+  for (const key of keys) {
+    const metric = ((device || {}).metrics || {})[key];
+    if (metric && metric.value !== null && metric.value !== undefined && metric.value !== '') return metric;
+  }
+  return null;
+}
+
+function netatmoLatestUpdate(devices, fallback) {
+  let latest = fallback || null;
+  let latestMs = latest ? new Date(latest).getTime() : 0;
+  devices.forEach(device => {
+    const stamp = device.last_update || device.updated_at;
+    const ms = stamp ? new Date(stamp).getTime() : 0;
+    if (Number.isFinite(ms) && ms > latestMs) {
+      latestMs = ms;
+      latest = stamp;
+    }
+  });
+  return latest;
+}
+
+function renderNetatmoSummaryCard(home, devices, data) {
+  const homeName = home.name || t('netatmo.home');
+  const onlineCount = devices.filter(device => device.online !== false).length;
+  const indoor = devices.find(device => device.type !== 'NAModule1' && device.type !== 'NAModule2' && device.type !== 'NAModule3' && netatmoDeviceMetric(device, ['temperature']));
+  const outdoor = devices.find(device => device.type === 'NAModule1' && netatmoDeviceMetric(device, ['temperature']));
+  const wind = devices.find(device => netatmoDeviceMetric(device, ['wind_speed']));
+  const rain = devices.find(device => netatmoDeviceMetric(device, ['rain_today']));
+  const lastUpdate = netatmoLatestUpdate(devices, data.last_successful_poll);
+  const homeIcon = netatmoSlug(homeName).includes('cesclans') ? '🏡' : '🏠';
+  return `
+    <section class="netatmo-summary-card">
+      <h3>${homeIcon} ${esc(homeName)}</h3>
+      <div class="netatmo-summary-lines">
+        <span>🟢 ${esc(t('netatmo.devicesOnline', { count: onlineCount }))}</span>
+        <span>🌡 ${esc(t('netatmo.metrics.indoor'))} ${esc(fmtNetatmoMetric(netatmoDeviceMetric(indoor, ['temperature'])))}</span>
+        <span>🌳 ${esc(t('netatmo.metrics.outdoor'))} ${esc(fmtNetatmoMetric(netatmoDeviceMetric(outdoor, ['temperature'])))}</span>
+        ${wind ? `<span>💨 ${esc(t('netatmo.metrics.wind'))} ${esc(fmtNetatmoMetric(netatmoDeviceMetric(wind, ['wind_speed'])))}</span>` : ''}
+        ${rain ? `<span>🌧 ${esc(t('netatmo.metrics.rainToday'))} ${esc(fmtNetatmoMetric(netatmoDeviceMetric(rain, ['rain_today'])))}</span>` : ''}
+        <span>${esc(t('common.lastUpdate'))} ${esc(fmtTime(lastUpdate))}</span>
+      </div>
+    </section>`;
+}
+
+function renderNetatmoDeviceCard(device) {
+  const friendly = netatmoFriendlyDevice(device);
+  const metrics = ['temperature', 'humidity', 'co2', 'pressure', 'noise', 'rain_today', 'wind_speed', 'gust', 'direction']
+    .map(key => {
+      const metric = ((device || {}).metrics || {})[key];
+      if (!metric || metric.value === null || metric.value === undefined || metric.value === '') return '';
+      const info = netatmoMetricInfo(key);
+      const rainAge = key === 'rain_today'
+        ? `<div class="netatmo-device-metric"><span>${esc(t('netatmo.metrics.daysSinceLastRain'))}</span><strong>${device.days_since_last_rain === null || device.days_since_last_rain === undefined ? esc(t('netatmo.metrics.notYetAvailable')) : esc(device.days_since_last_rain)}</strong></div>`
+        : '';
+      return `<div class="netatmo-device-metric"><span>${esc(info[0])} ${esc(info[1])}</span><strong>${esc(fmtNetatmoMetric(metric))}</strong></div>${rainAge}`;
+    })
+    .join('');
+  const battery = netatmoBattery(device);
+  const rawName = device.name || '';
+  const subtitle = rawName && rawName !== friendly.label
+    ? `<div class="netatmo-device-subtitle">${esc(t('netatmo.module'))}: ${esc(rawName)}</div>`
+    : '';
+  return `
+    <article class="netatmo-device-card">
+      <div class="netatmo-device-head">
+        <div>
+          <h4>${esc(friendly.icon)} ${esc(friendly.label)}</h4>
+          ${subtitle}
+        </div>
+        <span class="pill ${device.online === false ? 'bad' : 'ok'}">${device.online === false ? '🔴 Offline' : '🟢 Online'}</span>
+      </div>
+      <div class="netatmo-device-metrics">
+        ${metrics || `<div class="netatmo-device-metric"><span>${esc(t('netatmo.noValues'))}</span><strong>--</strong></div>`}
+        ${battery ? `<div class="netatmo-device-metric"><span>🔋 ${esc(t('netatmo.metrics.battery'))}</span><strong class="pill ${esc(battery.cls)}">${esc(battery.label)}</strong></div>` : ''}
+      </div>
+      <div class="netatmo-device-footer">${esc(t('common.lastUpdate'))}: ${esc(fmtTime(device.last_update || device.updated_at))}</div>
+    </article>`;
+}
+
+function renderNetatmo(s) {
+  const data = houseUI.netatmoForHouse(s.netatmo || {});
+  const root = document.getElementById('netatmoLocations');
+  if (root) {
+    const homes = Object.values(data.homes || {});
+    const summary = homes.map(home => renderNetatmoSummaryCard(home, netatmoDevicesForHome(data, home), data)).join('');
+    const details = homes.map(home => {
+      const devices = netatmoDevicesForHome(data, home);
+      const homeIcon = netatmoSlug(home.name).includes('cesclans') ? '🏡' : '🏠';
+      return `
+        <section class="netatmo-home-column">
+          <h3>${homeIcon} ${esc(String(home.name || t('netatmo.home')).toUpperCase())}</h3>
+          <div class="netatmo-device-grid">${devices.map(renderNetatmoDeviceCard).join('')}</div>
+        </section>`;
+    }).join('');
+    root.innerHTML = homes.length
+      ? `<div class="netatmo-summary-grid">${summary}</div><div class="netatmo-home-grid">${details}</div>`
+      : `<section class="weather-location"><h3>${esc(t('netatmo.noHomes'))}</h3></section>`;
+  }
+  const last = document.getElementById('netatmoLastUpdate');
+  if (last) last.textContent = fmtTime(data.last_successful_poll);
+  const comm = document.getElementById('netatmoCommunication');
+  if (!comm) return;
+  if (data.online || data.status === 'online') {
+    comm.textContent = t('netatmo.status.online');
+    comm.className = 'pill ok';
+  } else if (data.authorization_required) {
+    comm.textContent = t('netatmo.status.authorizationRequired');
+    comm.className = 'pill warn';
+  } else if (data.enabled === false) {
+    comm.textContent = t('netatmo.status.disabled');
+    comm.className = 'pill gray';
+  } else {
+    comm.textContent = t('netatmo.status.offline');
+    comm.className = 'pill bad';
   }
 }
 
@@ -449,7 +1293,7 @@ function renderSolarHeating(s) {
   const earlyConfirmation = document.getElementById('solarEarlyCompletionConfirmation');
   if (earlyConfirmation && document.activeElement !== earlyConfirmation) earlyConfirmation.value = Number(solar.early_completion_confirmation_minutes || 120);
   const minimumPv = document.getElementById('solarMinimumPvProduction');
-  if (minimumPv && document.activeElement !== minimumPv) minimumPv.value = Number(solar.minimum_pv_production_watts || 3000);
+  if (minimumPv && document.activeElement !== minimumPv) minimumPv.value = Number(solar.minimum_pv_production_watts || 2700);
   const pvRunningInterval = document.getElementById('solarPvRunningCheckInterval');
   if (pvRunningInterval && document.activeElement !== pvRunningInterval) pvRunningInterval.value = Number(solar.pv_running_check_interval_minutes || 30);
   const pvConfirmationDelay = document.getElementById('solarPvConfirmationDelay');
@@ -460,7 +1304,7 @@ function renderGoodWeDashboard(s) {
   const goodwe = s.goodwe || {};
   const pvProduction = numericValue(goodwe.pv_production);
   const houseConsumption = numericValue(goodwe.house_consumption);
-  const batteryPower = goodwe.pbattery1 ?? goodwe.battery_power;
+  const batteryPower = goodwe.pbattery1 !== null && goodwe.pbattery1 !== undefined ? goodwe.pbattery1 : goodwe.battery_power;
   const availableSurplus = pvProduction === null || houseConsumption === null
     ? null
     : Math.max(0, pvProduction - houseConsumption);
@@ -537,11 +1381,21 @@ function relayName(devId, relayNo, relay) {
   return optionalT(`devices.${devId}.relays.${relayNo}`) || relay.name;
 }
 
+function heaterReasonLabel(reason) {
+  if (!reason) return '--';
+  return optionalT(`heater.reason.${reason.key}`) || reason.label || '--';
+}
+
+function heaterReasonHtml(reason) {
+  if (!reason) return '';
+  const cls = reason.class || 'gray';
+  return `<div class="heater-reason pill ${esc(cls)}">${esc(heaterReasonLabel(reason))}</div>`;
+}
+
 function renderCards(s) {
   const root = document.getElementById('relayCards');
   root.innerHTML = '';
   const cfg = s.config;
-  const safeStop = ((s.runtime || {}).heater_safe_stop) || {};
   for (const [devId, dev] of Object.entries(cfg.devices)) {
     for (const [relayNo, relay] of Object.entries(dev.relays)) {
       if (devId === 'pool' && relayNo === '2') continue;
@@ -549,45 +1403,87 @@ function renderCards(s) {
       const st = relayStatusForDisplay(key, (s.relays || {})[key] || {});
       const [label, cls] = relayLabel(key, st.active);
       const heater = isHeaterRelay(devId, relayNo, relay);
-      const disabled = heater && safeStop.running ? ' disabled' : '';
-      const stopButton = heater
-        ? `<button class="off" onclick="safeStopHeater()"${disabled}>${esc(t('safeStop.button'))}</button>`
-        : `<button class="off" onclick="setRelay('${esc(devId)}','${esc(relayNo)}',false)">${esc(t('relay.turnOff'))}</button>`;
-      const safetyStatus = heater ? safeStopHtml(safeStop) : '';
+      const stopButton = `<button class="off" onclick="setRelay('${esc(devId)}','${esc(relayNo)}',false)">${esc(t('relay.turnOff'))}</button>`;
+      const heaterReason = heater ? heaterReasonHtml((s.heater || {}).reason) : '';
       const el = document.createElement('section');
       el.className = 'card';
-      el.innerHTML = `<div class="relay-title"><span class="icon">${esc(relay.icon || '🔌')}</span><div><h2>${esc(relayName(devId, relayNo, relay))}</h2><div class="muted">${esc(deviceName(devId, dev))} · ${esc(dev.ip)}:${esc(dev.port)} · ${esc(t('relay.number', { number: relayNo }))}</div></div></div><div class="state ${cls}">${esc(label)}</div><div class="muted">${esc(t('relay.response', { response: st.response || '-', ms: st.elapsed_ms || 0 }))}</div>${safetyStatus}<div class="relay-actions"><button class="on" onclick="setRelay('${esc(devId)}','${esc(relayNo)}',true)"${disabled}>${esc(t('relay.turnOn'))}</button>${stopButton}</div>`;
+      el.innerHTML = `<div class="relay-title"><span class="icon">${esc(relay.icon || '🔌')}</span><div><h2>${esc(relayName(devId, relayNo, relay))}</h2><div class="muted">${esc(deviceName(devId, dev))} · ${esc(dev.ip)}:${esc(dev.port)} · ${esc(t('relay.number', { number: relayNo }))}</div></div></div><div class="state ${cls}">${esc(label)}</div>${heaterReason}<div class="muted">${esc(t('relay.response', { response: st.response || '-', ms: st.elapsed_ms || 0 }))}</div><div class="relay-actions"><button class="on" onclick="setRelay('${esc(devId)}','${esc(relayNo)}',true)">${esc(t('relay.turnOn'))}</button>${stopButton}</div>`;
+      if (devId === 'garden' && relayNo === '1') {
+        el.insertAdjacentHTML('beforeend', gardenLightsTimerHtml(s));
+      }
       root.appendChild(el);
     }
   }
+  renderGardenLightsCountdown();
+}
+
+function gardenLightsTimerHtml(s) {
+  const savedMinutes = Math.max(1, Math.min(1440, Number(localStorage.getItem('gardenLightsMinutes') || 15)));
+  const timer = (s || {}).garden_light_timer || {};
+  const timerUntil = timer.deadline_at || '';
+  const active = timer.active === true;
+  const warning = timer.state === 'RETRY_WAIT'
+    ? `<div class="garden-timer-warning">Spegnimento non confermato. Nuovo tentativo programmato.${timer.last_error ? ` ${esc(timer.last_error)}` : ''}</div>`
+    : timer.state === 'FAULT'
+      ? `<div class="garden-timer-warning fault">Errore timer: ${esc(timer.last_error || 'stato non disponibile')}</div>`
+      : '';
+  return `<div class="garden-timer">
+    <label><span>Timer luci (minuti)</span>
+      <input id="gardenLightsMinutes" type="number" min="1" max="1440" step="1" value="${esc(savedMinutes)}" onchange="saveGardenLightsMinutes(this.value)">
+    </label>
+    <button class="on" type="button" onclick="startGardenLightsTimer()">Accendi con timer</button>
+    ${active ? '<button class="off" type="button" onclick="cancelGardenLightsTimer()">Annulla timer</button>' : ''}
+    <div id="gardenLightsTimerStatus" class="muted" data-timer-until="${esc(timerUntil)}" data-timer-state="${esc(timer.state || 'INACTIVE')}" data-off-attempts="${esc(timer.off_attempt_count || 0)}"></div>
+    ${warning}
+  </div>`;
+}
+
+function saveGardenLightsMinutes(value) {
+  const minutes = Math.max(1, Math.min(1440, Math.round(Number(value) || 15)));
+  localStorage.setItem('gardenLightsMinutes', String(minutes));
+  const input = document.getElementById('gardenLightsMinutes');
+  if (input) input.value = minutes;
+  return minutes;
+}
+
+function renderGardenLightsCountdown() {
+  const status = document.getElementById('gardenLightsTimerStatus');
+  if (!status) return;
+  const timerUntil = status.dataset.timerUntil;
+  const timerState = status.dataset.timerState || 'INACTIVE';
+  const remaining = timerUntil ? Math.max(0, Math.ceil((new Date(timerUntil).getTime() - Date.now()) / 1000)) : 0;
+  const expected = timerUntil ? new Date(timerUntil).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '';
+  status.textContent = remaining > 0
+    ? `Timer attivo · ${fmtSec(remaining)} · spegnimento previsto alle ${expected} · stato ${timerState}`
+    : ['OFF_PENDING', 'RETRY_WAIT'].includes(timerState)
+      ? `Spegnimento in corso · stato ${timerState} · tentativi ${status.dataset.offAttempts || 0}`
+      : `Timer non attivo · stato ${timerState}`;
+  status.className = remaining > 0 ? 'garden-timer-status active' : ['OFF_PENDING', 'RETRY_WAIT', 'FAULT'].includes(timerState) ? 'garden-timer-status warning' : 'garden-timer-status muted';
+}
+
+async function startGardenLightsTimer() {
+  const input = document.getElementById('gardenLightsMinutes');
+  const minutes = saveGardenLightsMinutes(input ? input.value : 15);
+  const result = await api('/api/garden/lights/timer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ minutes })
+  });
+  if (!result || result.ok !== true) window.alert((result || {}).error || 'Impossibile avviare il timer luci.');
+  await refresh();
+}
+
+async function cancelGardenLightsTimer() {
+  const result = await api('/api/garden/lights/timer/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  if (!result || result.ok !== true) window.alert((result || {}).error || 'Impossibile annullare il timer luci.');
+  await refresh();
 }
 
 function isHeaterRelay(devId, relayNo, relay) {
   return (devId === 'pool' && relayNo === '1') || relay.icon === '🔥' || (relay.name || '').toLowerCase().includes('riscaldatore');
-}
-
-function safeStopPhase(phase) {
-  const mapped = optionalT(`safeStop.phaseMap.${phase}`);
-  return mapped || phase || t('safeStop.inProgress');
-}
-
-function safeStopHtml(safeStop) {
-  if (safeStop.running) {
-    let detail = safeStopPhase(safeStop.phase);
-    if (safeStop.state === 'COOLDOWN_RUNNING') {
-      detail = t('safeStop.cooldownDetail', { seconds: safeStop.remaining_seconds || 0 });
-    } else if (safeStop.state === 'STOP_PUMP') {
-      detail = t('safeStop.stopPumpDetail');
-    }
-    return `<div class="muted">${esc(t('safeStop.running'))}<br>${detail}</div>`;
-  }
-  if (safeStop.state === 'ERROR') {
-    return `<div class="muted">${esc(t('safeStop.error', { error: safeStop.error || t('safeStop.unknownError') }))}</div>`;
-  }
-  if (safeStop.state === 'COMPLETED') {
-    return `<div class="muted">${esc(t('safeStop.completed'))}</div>`;
-  }
-  return '';
 }
 
 function renderDiag(s) {
@@ -638,11 +1534,6 @@ async function setRelay(device, relay, active) {
   await refresh();
 }
 
-async function safeStopHeater() {
-  await api('/api/heater/safe_stop', { method: 'POST' });
-  await refresh();
-}
-
 async function savePumpConfig() {
   await api('/api/pump/config', {
     method: 'POST',
@@ -664,7 +1555,7 @@ async function saveSolarHeatingConfig(extra = {}) {
     temperature_check_interval_seconds: Math.max(5, Math.min(60, Math.round(parseFloat(document.getElementById('solarTemperatureCheckInterval').value || '15') / 5) * 5)) * 60,
     early_completion_temperature: parseFloat(document.getElementById('solarEarlyCompletionTemperature').value),
     early_completion_confirmation_minutes: Math.max(30, Math.min(240, Math.round(parseFloat(document.getElementById('solarEarlyCompletionConfirmation').value || '120')))),
-    minimum_pv_production_watts: Math.max(0, Math.round(parseFloat(document.getElementById('solarMinimumPvProduction').value || '3000'))),
+    minimum_pv_production_watts: Math.max(0, Math.round(parseFloat(document.getElementById('solarMinimumPvProduction').value || '2700'))),
     pv_running_check_interval_minutes: Math.max(1, Math.round(parseFloat(document.getElementById('solarPvRunningCheckInterval').value || '30'))),
     pv_confirmation_delay_minutes: Math.max(1, Math.round(parseFloat(document.getElementById('solarPvConfirmationDelay').value || '15'))),
     ...extra
@@ -689,7 +1580,7 @@ async function refreshRelays() {
 }
 
 async function refreshCurrentPage() {
-  if (document.getElementById('relayCards')) return refresh();
+  if (document.getElementById('portalHome')) return refresh();
   if (document.getElementById('statisticsCards')) return refreshStatistics();
   if (document.getElementById('eventLog')) return refreshEvents();
   if (document.getElementById('historyPage') && typeof refreshHistory === 'function') return refreshHistory();
@@ -697,8 +1588,10 @@ async function refreshCurrentPage() {
 
 async function startPage() {
   await loadI18n();
+  renderPortalRoute();
+  window.addEventListener('hashchange', renderPortalRoute);
   await refreshCurrentPage();
-  if (!refreshTimer) refreshTimer = setInterval(refreshCurrentPage, refreshMs);
+  scheduleNextRefresh();
 }
 
 startPage();

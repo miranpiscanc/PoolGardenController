@@ -1,6 +1,7 @@
+const historyPageConfig = document.getElementById('historyPage');
 const historyState = {
   period: '24h',
-  location: 'opicina',
+  location: (historyPageConfig && historyPageConfig.dataset.initialLocation) || 'opicina',
   data: null,
   graphVisible: false,
   viewMin: null,
@@ -26,10 +27,25 @@ function historyUnits(metric) {
 }
 
 function historyStatsAvailable(stats) {
-  return ['today', 'period'].some(scope => {
+  return ['today', 'period', 'all_time'].some(scope => {
     const values = stats[scope] || {};
     return numericValue(values.min) !== null || numericValue(values.max) !== null;
   });
+}
+
+function historyScopeValuesHtml(values, unit, showRecordedOn = false) {
+  const minimum = numericValue(values.min);
+  const maximum = numericValue(values.max);
+  if (minimum === null && maximum === null) {
+    return `<div class="history-stat-empty muted">${esc(t('history.noRecords'))}</div>`;
+  }
+  const timestampHtml = (timestamp) => showRecordedOn && timestamp
+    ? `<small>${esc(t('history.recordedOn', { date: fmtDateTime(timestamp) }))}</small>`
+    : '';
+  return `
+    <div><span>${esc(t('history.minimum'))}</span><strong>${esc(historyFormatValue(values.min, unit))}</strong>${timestampHtml(values.min_timestamp)}</div>
+    <div><span>${esc(t('history.maximum'))}</span><strong>${esc(historyFormatValue(values.max, unit))}</strong>${timestampHtml(values.max_timestamp)}</div>
+  `;
 }
 
 function setHistoryActiveButtons() {
@@ -96,14 +112,21 @@ function renderHistoryStats() {
 
 function historyMetricStatsHtml(metric, stats) {
   const unit = historyUnits(metric);
+  const periodTitle = optionalT(`history.periods.${historyState.period}`) || historyState.period;
   return `
     <div class="history-metric-block">
       <h3>${esc(historyMetricLabel(metric))}</h3>
-      <div class="history-stat-grid">
-        <div><span>${esc(t('history.todayMin'))}</span><strong>${esc(historyFormatValue((stats.today || {}).min, unit))}</strong></div>
-        <div><span>${esc(t('history.todayMax'))}</span><strong>${esc(historyFormatValue((stats.today || {}).max, unit))}</strong></div>
-        <div><span>${esc(t('history.periodMin'))}</span><strong>${esc(historyFormatValue((stats.period || {}).min, unit))}</strong></div>
-        <div><span>${esc(t('history.periodMax'))}</span><strong>${esc(historyFormatValue((stats.period || {}).max, unit))}</strong></div>
+      <div class="history-stat-section">
+        <h4>${esc(t('history.todayTitle'))}</h4>
+        <div class="history-stat-grid">${historyScopeValuesHtml(stats.today || {}, unit)}</div>
+      </div>
+      <div class="history-stat-section">
+        <h4>📊 ${esc(periodTitle)}</h4>
+        <div class="history-stat-grid">${historyScopeValuesHtml(stats.period || {}, unit)}</div>
+      </div>
+      <div class="history-stat-section">
+        <h4>${esc(t('history.allTimeTitle'))}</h4>
+        <div class="history-stat-grid">${historyScopeValuesHtml(stats.all_time || {}, unit, true)}</div>
       </div>
     </div>
   `;

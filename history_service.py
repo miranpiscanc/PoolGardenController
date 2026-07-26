@@ -88,7 +88,8 @@ class HistoryService:
             "metrics": {
                 metric: {
                     "today": self._stats_for(metric, locations, today_start),
-                    "period": self._stats_for(metric, locations, period_start)
+                    "period": self._stats_for(metric, locations, period_start),
+                    "all_time": self._all_time_stats_for(metric, locations)
                 }
                 for metric in ("temperature", "humidity")
             },
@@ -96,7 +97,8 @@ class HistoryService:
                 loc: {
                     metric: {
                         "today": self._stats_for(metric, [loc], today_start),
-                        "period": self._stats_for(metric, [loc], period_start)
+                        "period": self._stats_for(metric, [loc], period_start),
+                        "all_time": self._all_time_stats_for(metric, [loc])
                     }
                     for metric in ("temperature", "humidity")
                 }
@@ -140,6 +142,49 @@ class HistoryService:
                     "points": points
                 }
                 for loc, points in series.items()
+            ]
+        }
+
+    def device_graph_data(self, period="24h", device_labels=None):
+        device_labels = device_labels if isinstance(device_labels, dict) else {}
+        locations = [f"netatmo:{device_id}" for device_id in device_labels]
+        if not locations:
+            return {"period": period, "metric": "temperature", "unit": "°C", "series": []}
+        start = self._period_start(period)
+        placeholders = ",".join("?" for _ in locations)
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT timestamp, location, value, unit
+                FROM metric_samples
+                WHERE metric = 'temperature'
+                  AND source = 'netatmo'
+                  AND timestamp >= ?
+                  AND location IN ({placeholders})
+                ORDER BY timestamp ASC
+                """,
+                [start, *locations]
+            ).fetchall()
+        series = {location: [] for location in locations}
+        units = {}
+        for row in rows:
+            series[row["location"]].append({
+                "timestamp": row["timestamp"],
+                "value": row["value"]
+            })
+            units[row["location"]] = row["unit"] or "°C"
+        return {
+            "period": period,
+            "metric": "temperature",
+            "unit": "°C",
+            "series": [
+                {
+                    "device_id": location.split(":", 1)[1],
+                    "label": device_labels.get(location.split(":", 1)[1], location),
+                    "unit": units.get(location, "°C"),
+                    "points": points
+                }
+                for location, points in series.items()
             ]
         }
 
@@ -188,6 +233,49 @@ class HistoryService:
         return {
             "min": self._round(row["min_value"] if row else None),
             "max": self._round(row["max_value"] if row else None)
+        }
+
+    def _all_time_stats_for(self, metric, locations: Iterable[str]):
+        locations = list(locations)
+        empty = {"min": None, "min_timestamp": None, "max": None, "max_timestamp": None, "since": None}
+        if not locations:
+            return empty
+        placeholders = ",".join("?" for _ in locations)
+        params = [metric, *locations]
+        where = f"metric = ? AND location IN ({placeholders})"
+        with self._lock, self._connect() as conn:
+            minimum = conn.execute(
+                f"""
+                SELECT value, timestamp
+                FROM metric_samples
+                WHERE {where}
+                ORDER BY value ASC, timestamp ASC
+                LIMIT 1
+                """,
+                params
+            ).fetchone()
+            maximum = conn.execute(
+                f"""
+                SELECT value, timestamp
+                FROM metric_samples
+                WHERE {where}
+                ORDER BY value DESC, timestamp ASC
+                LIMIT 1
+                """,
+                params
+            ).fetchone()
+            oldest = conn.execute(
+                f"SELECT MIN(timestamp) AS timestamp FROM metric_samples WHERE {where}",
+                params
+            ).fetchone()
+        if not minimum or not maximum:
+            return empty
+        return {
+            "min": self._round(minimum["value"]),
+            "min_timestamp": minimum["timestamp"],
+            "max": self._round(maximum["value"]),
+            "max_timestamp": maximum["timestamp"],
+            "since": oldest["timestamp"] if oldest else None
         }
 
     def _init_db(self):

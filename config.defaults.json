@@ -41,7 +41,7 @@
     "temperature_check_interval_seconds": 900,
     "early_completion_temperature": 31.0,
     "early_completion_confirmation_minutes": 120,
-    "minimum_pv_production_watts": 3000,
+    "minimum_pv_production_watts": 2700,
     "pv_running_check_interval_minutes": 30,
     "pv_confirmation_delay_minutes": 15
   },
@@ -55,14 +55,51 @@
   "viewer": {
     "enabled": true,
     "token": "",
-    "refresh_seconds": 30
+    "refresh_seconds": 60
+  },
+  "logging": {
+    "level": "INFO"
+  },
+  "goodwe": {
+    "recovery_after_failures": 3
+  },
+  "intesis": {
+    "enabled": false,
+    "username": "",
+    "password": "",
+    "device_type": "IntesisHome",
+    "poll_seconds": 300,
+    "reconnect_seconds": 30,
+    "command_timeout_seconds": 15
   },
   "history": {
     "enabled": true,
     "sample_seconds": 300
   },
+  "winter": {
+    "enabled": true,
+    "mode": "learning",
+    "target_temp": 18.0,
+    "automation": false,
+    "simulation": true,
+    "sample_seconds": 300
+  },
+  "houses": {
+    "cesclans": {
+      "winter": {
+        "target_temperature": 18.0
+      }
+    }
+  },
+  "netatmo": {
+    "enabled": true,
+    "poll_seconds": 60,
+    "retry_seconds": 60,
+    "timeout_seconds": 30
+  },
   "weather": {
     "poll_seconds": 30,
+    "forecast_poll_seconds": 1800,
     "timeout_seconds": 5,
     "retry_count": 2,
     "sources": {
@@ -82,6 +119,7 @@
     "locations": {
       "opicina": {
         "label": "Opicina",
+        "forecast_location": "Trieste",
         "metrics": {
           "temperature": {
             "label": "Temperature",
@@ -99,6 +137,7 @@
       },
       "cesclans": {
         "label": "Cesclans",
+        "forecast_location": "Cavazzo Carnico",
         "metrics": {
           "temperature": {
             "label": "Temperature",

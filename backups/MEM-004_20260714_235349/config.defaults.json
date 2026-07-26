@@ -1,0 +1,137 @@
+{
+  "app": {
+    "name": "Piscina e luci giardino",
+    "host": "0.0.0.0",
+    "port": 5000,
+    "poll_seconds": 30,
+    "tcp_timeout_seconds": 2.0
+  },
+  "devices": {
+    "pool": {
+      "name": "Piscina",
+      "ip": "192.168.200.113",
+      "port": 5002,
+      "relays": {
+        "1": {"name": "Riscaldatore", "icon": "🔥"},
+        "2": {"name": "Pompa piscina", "icon": "🏊"}
+      }
+    },
+    "garden": {
+      "name": "Giardino",
+      "ip": "192.168.200.117",
+      "port": 5002,
+      "relays": {
+        "1": {"name": "Luci giardino", "icon": "💡"}
+      }
+    }
+  },
+  "pump": {
+    "device": "pool",
+    "relay": "2",
+    "mode": "auto",
+    "start_time": "09:00",
+    "duration_hours": 6,
+    "enabled": true
+  },
+  "solar_heating": {
+    "enabled": false,
+    "water_temperature_threshold": 29.0,
+    "start_time": "08:00",
+    "forced_stop_time": "17:00",
+    "temperature_check_interval_seconds": 900,
+    "early_completion_temperature": 31.0,
+    "early_completion_confirmation_minutes": 120,
+    "minimum_pv_production_watts": 2700,
+    "pv_running_check_interval_minutes": 30,
+    "pv_confirmation_delay_minutes": 15
+  },
+  "notifications": {
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "chat_id": ""
+    }
+  },
+  "viewer": {
+    "enabled": true,
+    "token": "",
+    "refresh_seconds": 60
+  },
+  "logging": {
+    "level": "INFO"
+  },
+  "goodwe": {
+    "recovery_after_failures": 3
+  },
+  "intesis": {
+    "enabled": false,
+    "username": "",
+    "password": "",
+    "device_type": "IntesisHome",
+    "poll_seconds": 300,
+    "reconnect_seconds": 30,
+    "command_timeout_seconds": 15
+  },
+  "history": {
+    "enabled": true,
+    "sample_seconds": 300
+  },
+  "netatmo": {
+    "enabled": true,
+    "poll_seconds": 60,
+    "retry_seconds": 60,
+    "timeout_seconds": 30
+  },
+  "weather": {
+    "poll_seconds": 30,
+    "forecast_poll_seconds": 1800,
+    "timeout_seconds": 5,
+    "retry_count": 2,
+    "sources": {
+      "opicina_hwg_ste": {
+        "label": "Opicina HWg-STE",
+        "type": "hwg_ste",
+        "address": "http://192.168.10.122:54200",
+        "path": "/values.xml"
+      },
+      "cesclans_hwg_ste": {
+        "label": "Cesclans HWg-STE",
+        "type": "hwg_ste",
+        "address": "http://192.168.200.111:54200",
+        "path": "/values.xml"
+      }
+    },
+    "locations": {
+      "opicina": {
+        "label": "Opicina",
+        "forecast_location": "Trieste",
+        "metrics": {
+          "temperature": {
+            "label": "Temperature",
+            "unit": "°C",
+            "source": "opicina_hwg_ste",
+            "sensor_id": 215
+          },
+          "humidity": {
+            "label": "Humidity",
+            "unit": "%",
+            "source": "opicina_hwg_ste",
+            "sensor_id": 216
+          }
+        }
+      },
+      "cesclans": {
+        "label": "Cesclans",
+        "forecast_location": "Cavazzo Carnico",
+        "metrics": {
+          "temperature": {
+            "label": "Temperature",
+            "unit": "°C",
+            "source": "cesclans_hwg_ste",
+            "sensor_id": 215
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,36 +1,67 @@
 import json
 import atexit
 import asyncio
+import inspect
+import math
+import os
 import shutil
+import socket
 import threading
 import time
 import traceback
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any
 
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, g, has_request_context, jsonify, render_template, request
 
+from drivers import intesis
+from house_context import HouseRegistry
 from notification_service import NotificationService
+from providers import (
+    CesclansPoolProvider,
+    GoodWeEnergyProvider,
+    HouseProviders,
+    IntesisClimateProvider,
+    NetatmoWeatherProvider,
+    ProviderRegistry,
+)
 from relay_client import HHCRelayClient
 from temperature_service import DEFAULT_TEMPERATURE_SENSORS, TemperatureService
 from weather_service import DEFAULT_WEATHER_CONFIG, WeatherService
 from history_service import DEFAULT_HISTORY_CONFIG, HistoryService
+from netatmo_service import DEFAULT_NETATMO_CONFIG, NetatmoService
+from winter_energy_service import DEFAULT_WINTER_CONFIG, WinterEnergyService
+from garden_light_timer_service import GardenLightTimerService
 
 BASE = Path(__file__).resolve().parent
 DATA_DIR = BASE / "data"
 VERSION_PATH = BASE / "VERSION"
 CONFIG_DEFAULTS_PATH = BASE / "config.defaults.json"
 CONFIG_PATH = DATA_DIR / "config.json"
+HOUSES_CONFIG_PATH = BASE / "config" / "houses.json"
+NETATMO_CONFIG_PATH = BASE / "config" / "netatmo_config.json"
+NETATMO_TOKENS_PATH = BASE / "config" / "netatmo_tokens.json"
+NETATMO_RAIN_HISTORY_PATH = DATA_DIR / "netatmo_rain_history.json"
 LANG_DIR = BASE / "lang"
 STATE_PATH = DATA_DIR / "state.json"
 HISTORY_DB_PATH = DATA_DIR / "history.sqlite3"
+GARDEN_TIMER_DB_PATH = DATA_DIR / "garden_light_timer.sqlite3"
+WINTER_HOUSE_ID = "cesclans"
+WINTER_TARGET_MIN = 12.0
+WINTER_TARGET_MAX = 25.0
+WINTER_TARGET_STEP = 0.5
 HEATER_STATS_PATH = DATA_DIR / "heater_statistics.json"
 DEVICE_STATS_PATH = DATA_DIR / "device_statistics.json"
+DEVICE_STATS_BACKUP_DIR = BASE / "backups" / "runtime_data"
+DEVICE_STATS_BACKUP_PATH = DEVICE_STATS_BACKUP_DIR / "device_statistics.latest.json"
 EVENT_LOG_PATH = DATA_DIR / "event_log.json"
 LOG_DIR = BASE / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
+
+LOG_LEVELS = {"DEBUG": 10, "INFO": 20}
+current_log_level = "INFO"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -43,7 +74,11 @@ _runtime: Dict[str, Any] = {
     "last_poll": None,
     "last_command": None,
     "started_at": datetime.now().isoformat(timespec="seconds"),
-    "scheduler": {"last_action_key": None, "manual_run_until": None, "auto_suspended_date": None},
+    "scheduler": {
+        "last_action_key": None,
+        "manual_run_until": None,
+        "auto_suspended_date": None
+    },
     "solar_heating": {
         "last_start_date": None,
         "auto_started_date": None,
@@ -63,19 +98,17 @@ _runtime: Dict[str, Any] = {
         "running": False,
         "phase": "Inattivo",
         "started_at": None,
-        "cooldown_until": None,
         "completed_at": None,
         "error": None
     }
 }
-_safe_stop_thread = None
-_safe_stop_reset_thread = None
-_solar_safe_stop_monitor_thread = None
 temperature_service = None
 weather_service = None
 history_service = None
+netatmo_service = None
+winter_energy_service = None
+garden_light_timer_service = None
 notification_service = NotificationService()
-SAFE_STOP_COMPLETED_VISIBLE_SECONDS = 3
 MAX_EVENTS = 500
 DEFAULT_LANGUAGE = "en"
 STATS_DEFAULTS = {
@@ -88,6 +121,41 @@ STATS_DEFAULTS = {
     "last_known_active": None,
     "updated_at": None
 }
+
+DEFAULT_HOUSES = [
+    {
+        "id": "cesclans",
+        "display_name": "Cesclans",
+        "enabled": True,
+        "route": "/cesclans",
+        "description": "Current configured MeM house.",
+        "status_label": "Active / Configured",
+        "modules": ["GoodWe", "Netatmo", "Intesis", "Pool", "Winter Energy", "Weather", "History"],
+        "configured_devices": {
+            "energy": ["goodwe_inverter"],
+            "weather": ["netatmo"],
+            "climate": ["intesis"],
+            "pool": ["pool_controller"],
+        },
+        "providers": {
+            "energy": "goodwe",
+            "weather": "netatmo",
+            "climate": "intesis",
+            "pool": "cesclans_pool",
+        },
+    },
+    {
+        "id": "opicina",
+        "display_name": "Opicina",
+        "enabled": True,
+        "route": "/opicina",
+        "description": "House prepared for future configuration.",
+        "status_label": "Configuration pending",
+        "modules": [],
+        "configured_devices": {},
+        "providers": {},
+    },
+]
 
 
 def write_default_json(path, data):
@@ -119,6 +187,29 @@ def initialize_runtime_data():
 
 
 initialize_runtime_data()
+house_registry = HouseRegistry(HOUSES_CONFIG_PATH, DEFAULT_HOUSES)
+provider_registry = ProviderRegistry()
+_provider_registry_lock = threading.RLock()
+
+
+def load_houses_metadata():
+    """Load public house metadata only; operational configuration stays unchanged."""
+    houses = [house.to_public_dict() for house in house_registry.all()]
+    display_order = {"opicina": 0, "cesclans": 1}
+    return sorted(houses, key=lambda house: display_order.get(house["id"], len(display_order)))
+
+
+def house_metadata(house_id):
+    house = house_registry.get(house_id)
+    return house.to_public_dict() if house else None
+
+
+def current_house_context(house_id=None):
+    if house_id:
+        return house_registry.get(house_id)
+    if has_request_context() and getattr(g, "current_house", None) is not None:
+        return g.current_house
+    return house_registry.default("cesclans")
 
 
 def now():
@@ -131,6 +222,7 @@ def load_config():
     changed = ensure_config_defaults(cfg)
     if changed:
         save_config(cfg)
+    set_runtime_log_level(cfg)
     return cfg
 
 
@@ -143,8 +235,58 @@ def app_version(cfg=None):
 
 
 def save_config(cfg):
+    set_runtime_log_level(cfg)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+
+def save_config_atomic(cfg):
+    """Atomically replace the existing persistent configuration file."""
+    set_runtime_log_level(cfg)
+    temporary_path = CONFIG_PATH.with_suffix(f"{CONFIG_PATH.suffix}.tmp")
+    with open(temporary_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temporary_path, CONFIG_PATH)
+
+
+def winter_target_for_house(cfg, house_id=WINTER_HOUSE_ID):
+    houses = cfg.get("houses") if isinstance(cfg.get("houses"), dict) else {}
+    house = houses.get(house_id) if isinstance(houses.get(house_id), dict) else {}
+    winter = house.get("winter") if isinstance(house.get("winter"), dict) else {}
+    value = winter.get("target_temperature")
+    if isinstance(value, bool):
+        return DEFAULT_WINTER_CONFIG["target_temp"]
+    try:
+        target = float(value)
+    except (TypeError, ValueError):
+        target = DEFAULT_WINTER_CONFIG["target_temp"]
+    return target if math.isfinite(target) else DEFAULT_WINTER_CONFIG["target_temp"]
+
+
+def winter_config_for_house(cfg, house_id=WINTER_HOUSE_ID):
+    result = dict(cfg.get("winter") if isinstance(cfg.get("winter"), dict) else DEFAULT_WINTER_CONFIG)
+    result["target_temp"] = winter_target_for_house(cfg, house_id)
+    return result
+
+
+def normalize_log_level(value):
+    level = str(value or "INFO").strip().upper()
+    return level if level in LOG_LEVELS else "INFO"
+
+
+def set_runtime_log_level(cfg):
+    global current_log_level
+    logging_cfg = cfg.get("logging") if isinstance(cfg, dict) else {}
+    if not isinstance(logging_cfg, dict):
+        logging_cfg = {}
+    current_log_level = normalize_log_level(logging_cfg.get("level"))
+
+
+def log_enabled(level):
+    level = normalize_log_level(level)
+    return LOG_LEVELS[level] >= LOG_LEVELS.get(current_log_level, LOG_LEVELS["INFO"])
 
 
 def masked_token(value):
@@ -164,6 +306,11 @@ def public_config(cfg):
         telegram["bot_token"] = ""
         telegram["bot_token_masked"] = masked_token(token)
         telegram["bot_token_configured"] = bool(token)
+    intesis_config = public.get("intesis")
+    if isinstance(intesis_config, dict):
+        password = intesis_config.get("password")
+        intesis_config["password"] = ""
+        intesis_config["password_configured"] = bool(password)
     public.pop("viewer", None)
     return public
 
@@ -184,11 +331,18 @@ GOODWE_STATUS_FIELDS = {
 }
 GOODWE_HOST = "192.168.200.200"
 GOODWE_DAY_POLL_SECONDS = 60
-GOODWE_NIGHT_POLL_SECONDS = 300
+GOODWE_NIGHT_POLL_SECONDS = 60
 GOODWE_DAY_START_HOUR = 6
 GOODWE_DAY_END_HOUR = 22
+GOODWE_RECOVERY_AFTER_FAILURES = 3
+GOODWE_RECOVERY_WAIT_SECONDS = 5
+GOODWE_RECOVERY_RESUME_WAIT_SECONDS = 2
+GOODWE_DISCOVERY_PORT = 48899
+GOODWE_DISCOVERY_MESSAGE = b"WIFIKIT-214028-READ"
+GOODWE_DISCOVERY_TIMEOUT_SECONDS = 5
 goodwe_failure_count = 0
 goodwe_last_success = None
+goodwe_last_recovery_failure_count = 0
 GOODWE_RUNTIME_KEYS = (
     "ppv",
     "house_consumption",
@@ -224,9 +378,9 @@ def viewer_config(cfg):
 def viewer_refresh_seconds(cfg):
     viewer = viewer_config(cfg)
     try:
-        seconds = int(float(viewer.get("refresh_seconds", 30)))
+        seconds = int(float(viewer.get("refresh_seconds", 60)))
     except (TypeError, ValueError):
-        seconds = 30
+        seconds = 60
     return max(5, min(3600, seconds))
 
 
@@ -314,6 +468,20 @@ def goodwe_poll_interval_seconds():
     return GOODWE_NIGHT_POLL_SECONDS
 
 
+def goodwe_config(cfg=None):
+    if cfg is None:
+        cfg = load_config()
+    value = cfg.get("goodwe", {}) if isinstance(cfg, dict) else {}
+    return value if isinstance(value, dict) else {}
+
+
+def goodwe_recovery_after_failures():
+    try:
+        return max(1, int(goodwe_config().get("recovery_after_failures", GOODWE_RECOVERY_AFTER_FAILURES)))
+    except (TypeError, ValueError):
+        return GOODWE_RECOVERY_AFTER_FAILURES
+
+
 def goodwe_json_value(value):
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
@@ -323,24 +491,100 @@ def goodwe_json_value(value):
         return str(value)
 
 
+async def dispose_goodwe_instance(inverter, prefix="GoodWe polling", strict=False):
+    if inverter is None:
+        return
+    cleanup_level = "INFO" if prefix == "GoodWe recovery" else "DEBUG"
+    log(f"{prefix}: Destroying temporary inverter instance...", level=cleanup_level)
+    for method_name in ("close", "disconnect"):
+        method = getattr(inverter, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            result = method()
+            if inspect.isawaitable(result):
+                await result
+            log(f"{prefix}: inverter instance closed via {method_name}()", level=cleanup_level)
+        except Exception as exc:
+            log(f"{prefix}: {method_name}() cleanup failed: {exc}", level=cleanup_level)
+            if strict:
+                raise RuntimeError(f"resource cleanup via {method_name}() failed: {exc}") from exc
+        return
+    log(f"{prefix}: no persistent close method exposed; instance released", level=cleanup_level)
+
+
+def run_goodwe_discovery_probe():
+    stage = "UDP discovery probe"
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(GOODWE_DISCOVERY_TIMEOUT_SECONDS)
+        log("GoodWe recovery: Sending UDP discovery probe...")
+        sock.sendto(GOODWE_DISCOVERY_MESSAGE, (GOODWE_HOST, GOODWE_DISCOVERY_PORT))
+        data, address = sock.recvfrom(4096)
+        log(
+            "GoodWe recovery: Probe reply received "
+            f"from {address[0]}:{address[1]} ({len(data)} bytes)."
+        )
+        return data
+    except Exception as exc:
+        raise RuntimeError(f"{stage} failed: {exc}") from exc
+    finally:
+        if sock is not None:
+            sock.close()
+
+
+async def run_goodwe_recovery_et_session():
+    stage = "importing GoodWe library"
+    inverter = None
+    try:
+        import goodwe
+
+        stage = "opening ET connection"
+        log("GoodWe recovery: Opening ET connection...")
+        inverter = await goodwe.connect(GOODWE_HOST, family="ET")
+        log("GoodWe recovery: Connected.")
+
+        stage = "reading runtime data"
+        log("GoodWe recovery: Reading runtime data...")
+        await inverter.read_runtime_data()
+        log("GoodWe recovery: Runtime-data read successful.")
+    except Exception as exc:
+        raise RuntimeError(f"{stage} failed: {exc}") from exc
+    finally:
+        await dispose_goodwe_instance(inverter, "GoodWe recovery", strict=True)
+        inverter = None
+
+
 async def read_goodwe_runtime_data():
-    log("GoodWe polling: importing goodwe library")
-    import goodwe
+    prefix = "GoodWe polling"
+    stage = "importing GoodWe library"
+    inverter = None
+    try:
+        log(f"{prefix}: {stage}...", level="DEBUG")
+        import goodwe
 
-    log(f"GoodWe polling: goodwe module loaded from {getattr(goodwe, '__file__', 'unknown')}")
-    log(f"GoodWe polling: calling goodwe.connect({GOODWE_HOST!r}, family='ET')")
-    inverter = await goodwe.connect(GOODWE_HOST, family="ET")
-    log(f"GoodWe polling: goodwe.connect(...) completed with {type(inverter).__name__}")
-    log("GoodWe polling: calling read_runtime_data()")
-    data = await inverter.read_runtime_data()
-    log("GoodWe polling: read_runtime_data() completed")
-    return data
+        log(f"{prefix}: library loaded from {getattr(goodwe, '__file__', 'unknown')}", level="DEBUG")
+        stage = "creating new inverter instance"
+        log(f"{prefix}: {stage}...", level="DEBUG")
+        stage = "opening fresh connection/session"
+        log(f"{prefix}: {stage} to {GOODWE_HOST}...", level="DEBUG")
+        inverter = await goodwe.connect(GOODWE_HOST, family="ET")
+        log(f"{prefix}: new {type(inverter).__name__} instance connected", level="DEBUG")
+        stage = "reading runtime data"
+        log(f"{prefix}: {stage}...", level="DEBUG")
+        data = await inverter.read_runtime_data()
+        log(f"{prefix}: runtime-data read completed ({len(data)} fields)", level="DEBUG")
+        return data
+    except Exception as exc:
+        log(f"{prefix} failed while {stage}: {exc}")
+        raise
+    finally:
+        await dispose_goodwe_instance(inverter, prefix)
 
 
-def poll_goodwe_once():
+def apply_goodwe_runtime_data(data):
     global goodwe_failure_count, goodwe_last_success
-    log("GoodWe polling: poll cycle started")
-    data = asyncio.run(read_goodwe_runtime_data())
     goodwe_last_success = now()
     goodwe_failure_count = 0
     values = {
@@ -356,10 +600,37 @@ def poll_goodwe_once():
         cached.update({
             "status": "online",
             "host": GOODWE_HOST,
-            "last_successful_poll": now().isoformat(timespec="seconds"),
-            "last_error": None
+            "last_successful_poll": goodwe_last_success.isoformat(timespec="seconds"),
+            "last_error": None,
+            "last_error_traceback": None
         })
         _runtime["goodwe"] = cached
+
+
+def poll_goodwe_once():
+    previous_failures = goodwe_failure_count
+    log("GoodWe polling: poll cycle started", level="DEBUG")
+    data = asyncio.run(read_goodwe_runtime_data())
+    apply_goodwe_runtime_data(data)
+    return previous_failures
+
+
+def recover_goodwe_after_failures():
+    log(f"GoodWe recovery started after {goodwe_failure_count} consecutive failures.")
+    try:
+        run_goodwe_discovery_probe()
+        log(f"GoodWe recovery: Waiting {GOODWE_RECOVERY_WAIT_SECONDS} seconds...")
+        time.sleep(GOODWE_RECOVERY_WAIT_SECONDS)
+        asyncio.run(run_goodwe_recovery_et_session())
+        log(f"GoodWe recovery: Waiting {GOODWE_RECOVERY_RESUME_WAIT_SECONDS} seconds...")
+        time.sleep(GOODWE_RECOVERY_RESUME_WAIT_SECONDS)
+        log("GoodWe recovery successful. Normal polling resumed.")
+        return True
+    except Exception as exc:
+        mark_goodwe_offline(exc)
+        log(f"GoodWe recovery failed: {exc}")
+        log(f"TRACEBACK GoodWe recovery:\n{traceback.format_exc()}", level="DEBUG")
+        return False
 
 
 def goodwe_last_success_label():
@@ -369,9 +640,9 @@ def goodwe_last_success_label():
 
 
 def log_goodwe_poll_success(next_poll_seconds):
-    log("GoodWe polling completed successfully.")
-    log(f"Last successful update: {goodwe_last_success_label()}")
-    log(f"Next poll in {next_poll_seconds} seconds.")
+    log("GoodWe polling completed successfully.", level="DEBUG")
+    log(f"Last successful update: {goodwe_last_success_label()}", level="DEBUG")
+    log(f"Next poll in {next_poll_seconds} seconds.", level="DEBUG")
 
 
 def log_goodwe_poll_failure(next_retry_seconds):
@@ -397,21 +668,37 @@ def mark_goodwe_offline(error):
 
 
 def goodwe_background_loop():
-    global goodwe_failure_count
+    global goodwe_failure_count, goodwe_last_recovery_failure_count
     log(f"GoodWe polling service started for {GOODWE_HOST}")
     while True:
         poll_succeeded = False
+        recovery_attempted = False
+        previous_failures = goodwe_failure_count
         try:
-            poll_goodwe_once()
+            previous_failures = poll_goodwe_once()
             poll_succeeded = True
         except Exception as exc:
             goodwe_failure_count += 1
             error_traceback = traceback.format_exc()
             mark_goodwe_offline(exc)
             log(f"ERRORE GoodWe polling: {exc}")
-            log(f"TRACEBACK GoodWe polling:\n{error_traceback}")
+            log(f"TRACEBACK GoodWe polling:\n{error_traceback}", level="DEBUG")
+            recovery_after = goodwe_recovery_after_failures()
+            if (
+                goodwe_failure_count >= recovery_after
+                and goodwe_failure_count != goodwe_last_recovery_failure_count
+            ):
+                goodwe_last_recovery_failure_count = goodwe_failure_count
+                previous_failures = goodwe_failure_count
+                recovery_attempted = True
+                poll_succeeded = recover_goodwe_after_failures()
+                if poll_succeeded:
+                    goodwe_last_recovery_failure_count = 0
+                    continue
         next_poll_seconds = goodwe_poll_interval_seconds()
         if poll_succeeded:
+            if previous_failures > 0 and not recovery_attempted:
+                log(f"GoodWe polling restored after {previous_failures} failures.")
             log_goodwe_poll_success(next_poll_seconds)
         else:
             log_goodwe_poll_failure(next_poll_seconds)
@@ -420,6 +707,33 @@ def goodwe_background_loop():
 
 def ensure_config_defaults(cfg):
     changed = False
+    if "logging" not in cfg or not isinstance(cfg.get("logging"), dict):
+        cfg["logging"] = {}
+        changed = True
+    logging_cfg = cfg["logging"]
+    normalized_level = normalize_log_level(logging_cfg.get("level"))
+    if logging_cfg.get("level") != normalized_level:
+        logging_cfg["level"] = normalized_level
+        changed = True
+    if "goodwe" not in cfg or not isinstance(cfg.get("goodwe"), dict):
+        cfg["goodwe"] = {}
+        changed = True
+    goodwe = cfg["goodwe"]
+    goodwe_defaults = {
+        "recovery_after_failures": GOODWE_RECOVERY_AFTER_FAILURES
+    }
+    for key, value in goodwe_defaults.items():
+        if key not in goodwe:
+            goodwe[key] = value
+            changed = True
+    if "intesis" not in cfg or not isinstance(cfg.get("intesis"), dict):
+        cfg["intesis"] = {}
+        changed = True
+    intesis_config = cfg["intesis"]
+    for key, value in intesis.DEFAULT_INTESIS_CONFIG.items():
+        if key not in intesis_config:
+            intesis_config[key] = value
+            changed = True
     app_cfg = cfg.get("app")
     if isinstance(app_cfg, dict) and "version" in app_cfg:
         app_cfg.pop("version", None)
@@ -436,7 +750,7 @@ def ensure_config_defaults(cfg):
         "temperature_check_interval_seconds": 900,
         "early_completion_temperature": 31.0,
         "early_completion_confirmation_minutes": 120,
-        "minimum_pv_production_watts": 3000,
+        "minimum_pv_production_watts": 2700,
         "pv_running_check_interval_minutes": 30,
         "pv_confirmation_delay_minutes": 15
     }
@@ -468,7 +782,7 @@ def ensure_config_defaults(cfg):
     viewer_defaults = {
         "enabled": True,
         "token": "",
-        "refresh_seconds": 30
+        "refresh_seconds": 60
     }
     for key, value in viewer_defaults.items():
         if key not in viewer:
@@ -479,7 +793,7 @@ def ensure_config_defaults(cfg):
         changed = True
     else:
         weather = cfg["weather"]
-        for key in ("poll_seconds", "timeout_seconds", "retry_count"):
+        for key in ("poll_seconds", "forecast_poll_seconds", "timeout_seconds", "retry_count"):
             if key not in weather:
                 weather[key] = DEFAULT_WEATHER_CONFIG[key]
                 changed = True
@@ -498,6 +812,9 @@ def ensure_config_defaults(cfg):
                 continue
             target_location = weather["locations"][location_key]
             target_location.setdefault("label", location.get("label", location_key))
+            if "forecast_location" not in target_location and location.get("forecast_location"):
+                target_location["forecast_location"] = location["forecast_location"]
+                changed = True
             if "metrics" not in target_location or not isinstance(target_location.get("metrics"), dict):
                 target_location["metrics"] = {}
                 changed = True
@@ -515,6 +832,15 @@ def ensure_config_defaults(cfg):
         if humidity_metric.get("source") == "opicina_hwg_ste" and humidity_metric.get("sensor_id") == 2:
             humidity_metric["sensor_id"] = 216
             changed = True
+    if "netatmo" not in cfg or not isinstance(cfg.get("netatmo"), dict):
+        cfg["netatmo"] = json.loads(json.dumps(DEFAULT_NETATMO_CONFIG))
+        changed = True
+    else:
+        netatmo = cfg["netatmo"]
+        for key, value in DEFAULT_NETATMO_CONFIG.items():
+            if key not in netatmo:
+                netatmo[key] = value
+                changed = True
     if "history" not in cfg or not isinstance(cfg.get("history"), dict):
         cfg["history"] = json.loads(json.dumps(DEFAULT_HISTORY_CONFIG))
         changed = True
@@ -524,6 +850,49 @@ def ensure_config_defaults(cfg):
             if key not in history:
                 history[key] = value
                 changed = True
+    if "winter" not in cfg or not isinstance(cfg.get("winter"), dict):
+        cfg["winter"] = json.loads(json.dumps(DEFAULT_WINTER_CONFIG))
+        changed = True
+    else:
+        winter = cfg["winter"]
+        for key, value in DEFAULT_WINTER_CONFIG.items():
+            if key not in winter:
+                winter[key] = value
+                changed = True
+        # MEM-004 is strictly learning/simulation mode.
+        if winter.get("automation") is not False:
+            winter["automation"] = False
+            changed = True
+    houses = cfg.get("houses")
+    if not isinstance(houses, dict):
+        houses = {}
+        cfg["houses"] = houses
+        changed = True
+    cesclans = houses.get(WINTER_HOUSE_ID)
+    if not isinstance(cesclans, dict):
+        cesclans = {}
+        houses[WINTER_HOUSE_ID] = cesclans
+        changed = True
+    house_winter = cesclans.get("winter")
+    if not isinstance(house_winter, dict):
+        house_winter = {}
+        cesclans["winter"] = house_winter
+        changed = True
+    target = house_winter.get("target_temperature")
+    if (
+        isinstance(target, bool)
+        or not isinstance(target, (int, float))
+        or not math.isfinite(float(target))
+        or float(target) < WINTER_TARGET_MIN
+        or float(target) > WINTER_TARGET_MAX
+        or abs((float(target) - WINTER_TARGET_MIN) / WINTER_TARGET_STEP - round((float(target) - WINTER_TARGET_MIN) / WINTER_TARGET_STEP)) > 1e-9
+    ):
+        house_winter["target_temperature"] = DEFAULT_WINTER_CONFIG["target_temp"]
+        changed = True
+    authoritative_target = float(house_winter["target_temperature"])
+    if cfg["winter"].get("target_temp") != authoritative_target:
+        cfg["winter"]["target_temp"] = authoritative_target
+        changed = True
     return changed
 
 
@@ -703,6 +1072,27 @@ def normalize_statistics(data):
     return data
 
 
+def statistics_runtime_total(stats):
+    if not isinstance(stats, dict):
+        return 0
+    total = 0
+    for value in stats.values():
+        if not isinstance(value, dict):
+            continue
+        try:
+            total += max(0, int(value.get("total_seconds") or 0))
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def load_statistics_file(path):
+    try:
+        return normalize_statistics(json.loads(path.read_text(encoding="utf-8")))
+    except Exception:
+        return {}
+
+
 def migrate_heater_statistics(cfg, stats):
     if stats or not HEATER_STATS_PATH.exists():
         return stats
@@ -724,10 +1114,11 @@ def load_device_statistics(cfg=None):
         cfg = load_config()
     stats = {}
     if DEVICE_STATS_PATH.exists():
-        try:
-            stats = normalize_statistics(json.loads(DEVICE_STATS_PATH.read_text(encoding="utf-8")))
-        except Exception:
-            stats = {}
+        stats = load_statistics_file(DEVICE_STATS_PATH)
+    backup_stats = load_statistics_file(DEVICE_STATS_BACKUP_PATH) if DEVICE_STATS_BACKUP_PATH.exists() else {}
+    if statistics_runtime_total(backup_stats) > statistics_runtime_total(stats):
+        stats = backup_stats
+        log("STATS recovered from persistent backup after runtime counter regression")
     stats = migrate_heater_statistics(cfg, stats)
     for relay in relay_definitions(cfg):
         current = default_stats()
@@ -740,12 +1131,35 @@ def load_device_statistics(cfg=None):
     return stats
 
 
-def save_device_statistics(stats):
+def save_device_statistics(stats, allow_regression=False):
     data = {
         "updated_at": now().isoformat(timespec="seconds"),
         "relays": stats
     }
-    DEVICE_STATS_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    serialized = json.dumps(data, indent=2, ensure_ascii=False)
+    DEVICE_STATS_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+    current_stats = load_statistics_file(DEVICE_STATS_PATH) if DEVICE_STATS_PATH.exists() else {}
+    backup_stats = load_statistics_file(DEVICE_STATS_BACKUP_PATH) if DEVICE_STATS_BACKUP_PATH.exists() else {}
+    backup_source = stats if allow_regression else current_stats
+    if allow_regression or statistics_runtime_total(backup_source) >= statistics_runtime_total(backup_stats):
+        backup_tmp = DEVICE_STATS_BACKUP_PATH.with_suffix(".json.tmp")
+        backup_tmp.write_text(
+            json.dumps(
+                {
+                    "updated_at": now().isoformat(timespec="seconds"),
+                    "relays": backup_source
+                },
+                indent=2,
+                ensure_ascii=False
+            ),
+            encoding="utf-8"
+        )
+        os.replace(backup_tmp, DEVICE_STATS_BACKUP_PATH)
+
+    stats_tmp = DEVICE_STATS_PATH.with_suffix(".json.tmp")
+    stats_tmp.write_text(serialized, encoding="utf-8")
+    os.replace(stats_tmp, DEVICE_STATS_PATH)
 
 
 def load_event_log():
@@ -905,7 +1319,7 @@ def reset_season_statistics(cfg=None):
                     pass
                 relay_stats["active_start"] = current.isoformat(timespec="seconds")
             relay_stats["seasonal_seconds"] = 0
-        save_device_statistics(stats)
+        save_device_statistics(stats, allow_regression=True)
         record_event("Application", "", "Seasonal statistics reset", "API", "Seasonal runtime reset for all relays")
         return stats
 
@@ -926,12 +1340,18 @@ def reset_heater_seasonal_statistics():
         roll_daily_if_needed(relay_stats, current)
         relay_stats["seasonal_seconds"] = 0
         stats[relay_key(heater_dev, heater_no)] = relay_stats
-        save_device_statistics(stats)
+        save_device_statistics(stats, allow_regression=True)
         return relay_stats
 
 
-def log(msg: str):
+def log(msg: str, level="INFO"):
+    level = normalize_log_level(level)
+    if not log_enabled(level):
+        return
+    prefix = "" if level == "INFO" else f"{level} "
     line = f"{now().strftime('%Y-%m-%d %H:%M:%S')} | {msg}\n"
+    if prefix:
+        line = f"{now().strftime('%Y-%m-%d %H:%M:%S')} | {prefix}| {msg}\n"
     (LOG_DIR / f"{now().strftime('%Y-%m-%d')}.log").open("a", encoding="utf-8").write(line)
     print(line, end="")
 
@@ -1018,25 +1438,6 @@ def notify_heater_stopped(cfg, source=None):
         "🔥 PoolGardenController\n\n"
         f"Heater stopped{notification_action_suffix(source)}.\n\n"
         f"Time:\n{notification_time()}",
-        cfg
-    )
-
-
-def notify_safe_stop_started(cfg):
-    send_notification(
-        "🛑 PoolGardenController\n\n"
-        "Safe Stop started.\n\n"
-        "Heater OFF.\n\n"
-        "Cooling pump running.",
-        cfg
-    )
-
-
-def notify_safe_stop_completed(cfg):
-    send_notification(
-        "✅ PoolGardenController\n\n"
-        "Safe Stop completed.\n\n"
-        "Pump stopped.",
         cfg
     )
 
@@ -1317,6 +1718,18 @@ def relay_set_confirmed(status, expected_active):
     return status.get("command_ok", True) and status.get("ok") and status.get("active") is expected_active
 
 
+def relay_command_accepted(status, expected_active):
+    return bool(
+        status.get("command_ok", True)
+        and status.get("ok")
+        and (
+            status.get("active") is expected_active
+            or status.get("incomplete")
+            or status.get("state_preserved")
+        )
+    )
+
+
 def heater_relay(cfg):
     if isinstance(cfg.get("heater"), dict):
         h = cfg["heater"]
@@ -1332,6 +1745,13 @@ def heater_relay(cfg):
 def pump_relay(cfg):
     p = cfg["pump"]
     return p["device"], str(p["relay"])
+
+
+def garden_lights_relay(cfg):
+    garden = cfg.get("devices", {}).get("garden", {})
+    relays = garden.get("relays", {}) if isinstance(garden, dict) else {}
+    relay_number = next(iter(relays.keys()), "1")
+    return "garden", str(relay_number)
 
 
 def same_relay(left_dev, left_relay, right_dev, right_relay):
@@ -1350,16 +1770,7 @@ def set_safe_stop_state(**updates):
 
 def safe_stop_snapshot():
     with _lock:
-        state = dict(_runtime["heater_safe_stop"])
-    remaining = 0
-    if state.get("running") and state.get("cooldown_until"):
-        try:
-            cooldown_until = datetime.fromisoformat(state["cooldown_until"])
-            remaining = max(0, int((cooldown_until - now()).total_seconds()))
-        except Exception:
-            remaining = 0
-    state["remaining_seconds"] = remaining
-    return state
+        return dict(_runtime["heater_safe_stop"])
 
 
 def fail_safe_stop(message):
@@ -1374,105 +1785,38 @@ def fail_safe_stop(message):
     log(f"HEATER_SAFE_STOP ERROR | {message}")
 
 
-def reset_safe_stop_after_completed(completed_at):
-    time.sleep(SAFE_STOP_COMPLETED_VISIBLE_SECONDS)
-    with _lock:
-        state = _runtime["heater_safe_stop"]
-        if (
-            state.get("state") == "COMPLETED"
-            and state.get("completed_at") == completed_at
-            and not state.get("running")
-        ):
-            state.update({
-                "state": "IDLE",
-                "phase": "Inattivo",
-                "started_at": None,
-                "cooldown_until": None,
-                "completed_at": None,
-                "error": None
-            })
-
-
 def complete_safe_stop(phase="Arresto sicuro completato"):
-    global _safe_stop_reset_thread
-    cfg = load_config()
     completed_at = now().isoformat(timespec="microseconds")
     set_safe_stop_state(
         state="COMPLETED",
         running=False,
         phase=phase,
-        cooldown_until=None,
         completed_at=completed_at,
         error=None
     )
     record_event("Heater", "Relay 1", "Safe Stop Completed", "Safe Stop", phase)
-    notify_safe_stop_completed(cfg)
     log(f"HEATER_SAFE_STOP COMPLETED | {phase}")
-    _safe_stop_reset_thread = threading.Thread(
-        target=reset_safe_stop_after_completed,
-        args=(completed_at,),
-        daemon=True
-    )
-    _safe_stop_reset_thread.start()
 
 
 def heater_safe_stop_worker(source="manual"):
     try:
         cfg = load_config()
         heater_dev, heater_no = heater_relay(cfg)
-        pump_dev, pump_no = pump_relay(cfg)
 
-        set_safe_stop_state(state="SAFE_STOP_START", phase="Verifica stato riscaldatore", error=None)
-        heater_status = read_and_cache_one(cfg, heater_dev, heater_no, source=source, notify_on_error=False)
-        if not heater_status.get("ok"):
-            fail_safe_stop(heater_status.get("error") or "Riscaldatore non raggiungibile")
-            return
+        set_safe_stop_state(state="SAFE_STOP_START", phase="Spegnimento riscaldatore", error=None)
+        heater_off = set_one_raw(cfg, heater_dev, heater_no, False, source=source)
+        if not relay_set_confirmed(heater_off, False):
+            fail_safe_stop(heater_off.get("command_error") or heater_off.get("error") or "Spegnimento riscaldatore non confermato")
+            return False
 
-        set_safe_stop_state(phase="Verifica stato pompa")
-        pump_status = read_and_cache_one(cfg, pump_dev, pump_no, source=source, notify_on_error=True)
-        if not pump_status.get("ok"):
-            fail_safe_stop(pump_status.get("error") or "Pompa non raggiungibile")
-            return
-
-        if heater_status.get("active") is True:
-            set_safe_stop_state(phase="Spegnimento riscaldatore")
-            heater_off = set_one_raw(cfg, heater_dev, heater_no, False, source=source)
-            if not relay_set_confirmed(heater_off, False):
-                fail_safe_stop(heater_off.get("command_error") or heater_off.get("error") or "Spegnimento riscaldatore non confermato")
-                return
-        elif heater_status.get("active") is not False:
-            fail_safe_stop("Stato riscaldatore non valido")
-            return
-
-        if pump_status.get("active") is False:
-            complete_safe_stop("Riscaldatore spento, pompa già ferma")
-            return
-        if pump_status.get("active") is not True:
-            fail_safe_stop("Stato pompa non valido")
-            return
-
-        cooldown_until = now() + timedelta(seconds=60)
-        set_safe_stop_state(
-            state="COOLDOWN_RUNNING",
-            phase="Raffreddamento in corso",
-            cooldown_until=cooldown_until.isoformat(timespec="seconds")
-        )
-        while now() < cooldown_until:
-            time.sleep(min(1, max(0, (cooldown_until - now()).total_seconds())))
-
-        set_safe_stop_state(state="STOP_PUMP", phase="Arresto pompa")
-        pump_off = set_one_raw(cfg, pump_dev, pump_no, False, source=source)
-        if not relay_set_confirmed(pump_off, False):
-            fail_safe_stop(pump_off.get("command_error") or pump_off.get("error") or "Arresto pompa non confermato")
-            return
-
-        complete_safe_stop()
+        complete_safe_stop("Riscaldatore spento")
+        return True
     except Exception as exc:
         fail_safe_stop(str(exc))
+        return False
 
 
 def start_heater_safe_stop(source="manual"):
-    global _safe_stop_thread
     with _lock:
         if _runtime["heater_safe_stop"].get("running"):
             log(f"HEATER_SAFE_STOP IGNORED | already running | source={source}")
@@ -1482,20 +1826,13 @@ def start_heater_safe_stop(source="manual"):
             "running": True,
             "phase": "Avvio arresto sicuro",
             "started_at": now().isoformat(timespec="seconds"),
-            "cooldown_until": None,
             "completed_at": None,
             "error": None
         })
-        _safe_stop_thread = threading.Thread(
-            target=heater_safe_stop_worker,
-            kwargs={"source": source},
-            daemon=True
-        )
-        _safe_stop_thread.start()
     log(f"HEATER_SAFE_STOP START | source={source}")
-    record_event("Heater", "Relay 1", "Safe Stop Started", source_label(source), "Protection sequence")
-    notify_safe_stop_started(load_config())
-    return True, "Safe Stop started"
+    record_event("Heater", "Relay 1", "Safe Stop Started", source_label(source), "Immediate heater shutdown")
+    completed = heater_safe_stop_worker(source=source)
+    return completed, "Heater stopped" if completed else "Heater stop failed"
 
 
 def ignored_safe_stop_command_status(cfg, device_id, relay_number, message="Command ignored: Safe Stop in progress"):
@@ -1520,17 +1857,7 @@ def set_one(cfg, device_id, relay_number, active: bool, source="manual"):
     if safe_stop_running() and (is_heater or is_pump):
         return ignored_safe_stop_command_status(cfg, device_id, relay_number)
     if not active and is_heater:
-        started, message = start_heater_safe_stop(source=f"{source}_safe_stop")
-        return {
-            "ok": True,
-            "active": _runtime.get("relays", {}).get(f"{heater_dev}:{heater_no}", {}).get("active"),
-            "response": message,
-            "message": message,
-            "ignored": not started,
-            "elapsed_ms": 0,
-            "error": "",
-            "updated_at": now().isoformat(timespec="seconds")
-        }
+        return set_one_raw(cfg, device_id, relay_number, False, source=source)
     if not active and is_pump:
         heater_status = read_and_cache_one(cfg, heater_dev, heater_no, source=source, notify_on_error=False)
         if not heater_status.get("ok"):
@@ -1562,17 +1889,16 @@ def set_one(cfg, device_id, relay_number, active: bool, source="manual"):
                 "updated_at": now().isoformat(timespec="seconds")
             }
         if heater_status.get("active") is True:
-            started, message = start_heater_safe_stop(source=f"{source}_interlock")
-            return {
-                "ok": True,
-                "active": pump_status_from_runtime(cfg),
-                "response": message,
-                "message": message,
-                "ignored": not started,
-                "elapsed_ms": heater_status.get("elapsed_ms"),
-                "error": "",
-                "updated_at": now().isoformat(timespec="seconds")
-            }
+            stopped, message = start_heater_safe_stop(source=f"{source}_interlock")
+            if not stopped:
+                return {
+                    "ok": False,
+                    "active": pump_status_from_runtime(cfg),
+                    "response": message,
+                    "elapsed_ms": heater_status.get("elapsed_ms"),
+                    "error": message,
+                    "updated_at": now().isoformat(timespec="seconds")
+                }
     return set_one_raw(cfg, device_id, relay_number, active, source=source)
 
 
@@ -1636,6 +1962,58 @@ def refresh_all_relays(source="startup", notify_on_error=True):
         _runtime["devices"] = new_devices
         _runtime["relays"] = new_relays
         _runtime["last_poll"] = now().isoformat(timespec="seconds")
+
+
+def garden_timer_relay_setter(active):
+    cfg = load_config()
+    device_id, relay_number = garden_lights_relay(cfg)
+    return set_one(cfg, device_id, relay_number, bool(active), source="garden_timer")
+
+
+def garden_timer_relay_reader():
+    cfg = load_config()
+    device_id, relay_number = garden_lights_relay(cfg)
+    return read_and_cache_one(cfg, device_id, relay_number, source="garden_timer", notify_on_error=True)
+
+
+def start_garden_light_timer_service():
+    global garden_light_timer_service
+    if garden_light_timer_service is None:
+        cfg = load_config()
+        device_id, relay_number = garden_lights_relay(cfg)
+        garden_light_timer_service = GardenLightTimerService(
+            GARDEN_TIMER_DB_PATH,
+            house_id="cesclans",
+            device_id=device_id,
+            relay_number=relay_number,
+            relay_setter=garden_timer_relay_setter,
+            relay_reader=garden_timer_relay_reader,
+            log_callback=log,
+        )
+        legacy_value = ((_runtime.get("scheduler") or {}).get("garden_lights_until"))
+        if not legacy_value:
+            stored_state = load_state()
+            legacy_value = ((stored_state.get("scheduler") or {}).get("garden_lights_until"))
+        if legacy_value:
+            try:
+                legacy_deadline = datetime.fromisoformat(str(legacy_value))
+                if legacy_deadline.tzinfo is None:
+                    legacy_deadline = legacy_deadline.astimezone()
+                garden_light_timer_service.import_legacy_deadline(
+                    legacy_deadline.astimezone(timezone.utc).isoformat()
+                )
+            except Exception as exc:
+                log(f"GARDEN_TIMER event=LEGACY_MIGRATION_FAILED error={exc}")
+    garden_light_timer_service.start()
+    return garden_light_timer_service
+
+
+def stop_garden_light_timer_service():
+    if garden_light_timer_service is not None:
+        garden_light_timer_service.stop()
+
+
+atexit.register(stop_garden_light_timer_service)
 
 
 def parse_today_time(hhmm: str):
@@ -1725,9 +2103,9 @@ def early_completion_confirmation_minutes(solar):
 
 def minimum_pv_production_watts(solar):
     try:
-        watts = int(float(solar.get("minimum_pv_production_watts", 3000)))
+        watts = int(float(solar.get("minimum_pv_production_watts", 2700)))
     except (TypeError, ValueError):
-        watts = 3000
+        watts = 2700
     return max(0, watts)
 
 
@@ -1747,22 +2125,68 @@ def pv_confirmation_delay_minutes(solar):
     return max(1, minutes)
 
 
-def cached_goodwe_pv_production():
-    cached = _runtime.get("goodwe")
-    if not isinstance(cached, dict):
+def cached_energy_pv_production():
+    provider = energy_provider_for_house("cesclans")
+    if provider is None:
         return None
-    for key in GOODWE_STATUS_FIELDS["pv_production"]:
-        if key in cached:
-            try:
-                return float(cached.get(key))
-            except (TypeError, ValueError):
-                return None
-    return None
+    snapshot = provider.get_status_snapshot()
+    if snapshot.get("status") != "online":
+        return None
+    return numeric_or_none(snapshot.get("pv_production"))
+
+
+def cached_goodwe_pv_production():
+    """Backward-compatible alias for legacy callers."""
+    return cached_energy_pv_production()
+
+
+def pv_production_meets_threshold(solar):
+    pv = cached_energy_pv_production()
+    if pv is None:
+        return None
+    return pv >= minimum_pv_production_watts(solar)
 
 
 def pv_production_available(solar):
-    pv = cached_goodwe_pv_production()
-    return pv is not None and pv >= minimum_pv_production_watts(solar)
+    return pv_production_meets_threshold(solar) is True
+
+
+def heater_reason_snapshot(cfg, heater_active=None, pump_active=None):
+    solar = solar_heating_config(cfg)
+    pv_adequate = pv_production_meets_threshold(solar)
+    if heater_active not in (True, False) or pump_active not in (True, False):
+        return {"key": "communication_error", "label": "Communication error", "class": "bad"}
+    if not solar.get("enabled"):
+        return {"key": "disabled", "label": "Disabled", "class": "gray"}
+    if pump_active is False:
+        return {"key": "pump_off", "label": "Pool pump OFF", "class": "info"}
+    if heater_active is True:
+        return {"key": "heating", "label": "Heating", "class": "ok"}
+    if pv_adequate is None:
+        return {"key": "communication_error", "label": "Communication error", "class": "bad"}
+    if pv_adequate is True:
+        return {"key": "waiting_check", "label": "Waiting for scheduled check", "class": "info"}
+    return {"key": "waiting_pv", "label": "Waiting for PV production", "class": "warn"}
+
+
+def pool_heater_snapshot(cfg):
+    heater_dev, heater_no = heater_relay(cfg)
+    pump_dev, pump_no = pump_relay(cfg)
+    status = cached_relay_status(heater_dev, heater_no)
+    heater_active = status.get("active")
+    pump_active = relay_active_from_runtime(pump_dev, pump_no)
+    solar = solar_heating_config(cfg)
+    return {
+        "device": heater_dev,
+        "relay": heater_no,
+        "active": heater_active,
+        "mode": "AUTO" if solar.get("enabled") else "MANUAL",
+        "last_update": status.get("updated_at"),
+        "response": status.get("response", ""),
+        "elapsed_ms": status.get("elapsed_ms", 0),
+        "ok": status.get("ok"),
+        "reason": heater_reason_snapshot(cfg, heater_active, pump_active)
+    }
 
 
 def set_solar_next_temperature_check(state, value):
@@ -1828,8 +2252,9 @@ def reconcile_solar_temperature_schedule(cfg, force_due=False, current=None):
         next_check = current
     else:
         next_check = last_check + interval
-        if next_check < current:
-            next_check = current
+
+    # Keep an overdue check due until solar_heating_tick() consumes it. Moving it
+    # to `current` here allows status snapshots to postpone the check forever.
 
     if next_check >= stop:
         set_solar_next_temperature_check(state, None)
@@ -1844,6 +2269,23 @@ def schedule_solar_temperature_recheck(cfg, checked_at):
     state = _runtime["solar_heating"]
     next_check = checked_at + timedelta(seconds=solar_temperature_check_interval_seconds(solar))
     set_solar_next_temperature_check(state, next_check if next_check < stop else None)
+
+
+def log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, decision):
+    def reading(value, unit):
+        return "unavailable" if value is None else f"{value:.1f} {unit}"
+
+    log(
+        "Solar scheduled check | "
+        f"time={checked_at.strftime('%Y-%m-%d %H:%M:%S')} | "
+        f"pv={reading(pv_production, 'W')} | "
+        f"water={reading(water_temperature, '°C')} | "
+        f"pv_threshold={minimum_pv_production_watts(solar)} W | "
+        f"water_threshold={float(solar.get('water_temperature_threshold', 29.0)):.1f} °C | "
+        f"early_completion_threshold={early_completion_temperature(solar):.1f} °C | "
+        f"decision={decision}",
+        level="DEBUG"
+    )
 
 
 def solar_heating_snapshot(cfg=None):
@@ -1962,36 +2404,6 @@ def record_solar_event(event, reason=""):
     log(f"SOLAR_HEATING {event} | {reason}")
 
 
-def monitor_solar_safe_stop_completion(target_date):
-    while True:
-        safe_stop = safe_stop_snapshot()
-        if not safe_stop.get("running"):
-            if safe_stop.get("state") == "COMPLETED":
-                with _lock:
-                    state = _runtime["solar_heating"]
-                    if state.get("safe_stop_completed_date") != target_date:
-                        state["safe_stop_completed_date"] = target_date
-                        reset_early_completion_timer(state)
-                        save_state()
-                        event = "Automation completed early" if state.get("early_completion_completed_date") == target_date else "Automatic Safe Stop completed"
-                        record_solar_event(event)
-                        notify_automation_completed(load_config(), early=state.get("early_completion_completed_date") == target_date)
-            return
-        time.sleep(1)
-
-
-def start_solar_safe_stop_monitor(target_date):
-    global _solar_safe_stop_monitor_thread
-    if _solar_safe_stop_monitor_thread and _solar_safe_stop_monitor_thread.is_alive():
-        return
-    _solar_safe_stop_monitor_thread = threading.Thread(
-        target=monitor_solar_safe_stop_completion,
-        args=(target_date,),
-        daemon=True
-    )
-    _solar_safe_stop_monitor_thread.start()
-
-
 def relay_active_from_runtime(device_id, relay_number):
     return _runtime.get("relays", {}).get(f"{device_id}:{relay_number}", {}).get("active")
 
@@ -2014,8 +2426,15 @@ def start_solar_safe_stop(state, today, event, source, early=False):
     reset_solar_pv_confirmation(state)
     save_state()
     record_solar_event(event)
-    start_heater_safe_stop(source=source)
-    start_solar_safe_stop_monitor(today)
+    stopped, message = start_heater_safe_stop(source=source)
+    if stopped:
+        complete_solar_for_today(
+            state,
+            today,
+            "Automation completed early" if early else "Automatic Safe Stop completed"
+        )
+    else:
+        record_solar_event("Automatic heater stop failed", message)
 
 
 def update_early_completion_timer(solar, state, water_temperature, checked_at):
@@ -2085,10 +2504,12 @@ def handle_solar_running_pv_check(solar, state, today, current, heater_active):
         if current < confirmation_due:
             return True
         state["last_pv_running_check_at"] = current.isoformat(timespec="seconds")
-        if pv_production_available(solar):
+        pv_adequate = pv_production_meets_threshold(solar)
+        if pv_adequate is not False:
             reset_solar_pv_confirmation(state)
             save_state()
-            record_solar_event("PV production recovered")
+            if pv_adequate is True:
+                record_solar_event("PV production recovered")
             return False
         start_solar_safe_stop(
             state,
@@ -2104,7 +2525,8 @@ def handle_solar_running_pv_check(solar, state, today, current, heater_active):
         return False
 
     state["last_pv_running_check_at"] = current.isoformat(timespec="seconds")
-    if pv_production_available(solar):
+    pv_adequate = pv_production_meets_threshold(solar)
+    if pv_adequate is not False:
         save_state()
         return False
 
@@ -2206,6 +2628,7 @@ def solar_heating_tick():
     checked_at = current
     state["last_temperature_check_at"] = checked_at.isoformat(timespec="seconds")
     set_solar_next_temperature_check(state, None)
+    pv_production = cached_energy_pv_production()
     water_temperature = water_temperature_snapshot()
     if water_temperature is None:
         reset_early_completion_timer(state)
@@ -2215,14 +2638,16 @@ def solar_heating_tick():
             "elapsed_seconds": 0,
             "remaining_seconds": early_completion_confirmation_minutes(solar) * 60
         })
+        record_solar_event("Automatic heating skipped", "Water temperature unavailable")
+        log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, "skip: water temperature unavailable")
         schedule_solar_temperature_recheck(cfg, checked_at)
         save_state()
-        record_solar_event("Automatic heating skipped", "Water temperature unavailable")
         return
 
     early_details = update_early_completion_timer(solar, state, water_temperature, checked_at)
     record_early_completion_debug(water_temperature, early_details)
     if early_details.get("completed"):
+        log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, "safe stop: early completion threshold confirmed")
         start_solar_safe_stop(
             state,
             today,
@@ -2234,18 +2659,22 @@ def solar_heating_tick():
 
     threshold = float(solar.get("water_temperature_threshold", 29.0))
     if water_temperature >= threshold:
+        record_solar_event(f"Temperature OK (Water {water_temperature:.1f}°C)")
+        log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, "heater remains off: water temperature at or above threshold")
         schedule_solar_temperature_recheck(cfg, checked_at)
         save_state()
-        record_solar_event(f"Temperature OK (Water {water_temperature:.1f}°C)")
         return
 
-    if not pv_production_available(solar):
-        schedule_solar_temperature_recheck(cfg, checked_at)
-        save_state()
+    pv_threshold = minimum_pv_production_watts(solar)
+    if pv_production is None or pv_production < pv_threshold:
+        pv_reason = "PV production unavailable" if pv_production is None else f"PV production below {pv_threshold} W"
         record_solar_event(
             "Automatic heating skipped",
-            f"PV production below {minimum_pv_production_watts(solar)} W"
+            pv_reason
         )
+        log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, f"skip: {pv_reason.lower()}")
+        schedule_solar_temperature_recheck(cfg, checked_at)
+        save_state()
         return
 
     pump_active = relay_active_from_runtime(pump_dev, pump_no)
@@ -2253,17 +2682,19 @@ def solar_heating_tick():
     if pump_active is not True:
         pump_status = set_one_raw(cfg, pump_dev, pump_no, True, source="solar_heating")
         if not relay_set_confirmed(pump_status, True):
+            record_solar_event("Automatic heating skipped", "Pump start was not confirmed")
+            log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, "skip: pump start not confirmed")
             schedule_solar_temperature_recheck(cfg, checked_at)
             save_state()
-            record_solar_event("Automatic heating skipped", "Pump start was not confirmed")
             return
         started_any = True
     if heater_active is not True:
         heater_status = set_one_raw(cfg, heater_dev, heater_no, True, source="solar_heating")
         if not relay_set_confirmed(heater_status, True):
+            record_solar_event("Automatic heating skipped", "Heater start was not confirmed")
+            log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, "skip: heater start not confirmed")
             schedule_solar_temperature_recheck(cfg, checked_at)
             save_state()
-            record_solar_event("Automatic heating skipped", "Heater start was not confirmed")
             return
         started_any = True
     state["auto_started_date"] = today
@@ -2271,13 +2702,15 @@ def solar_heating_tick():
     state["safe_stop_completed_date"] = None
     state["last_pv_running_check_at"] = checked_at.isoformat(timespec="seconds")
     reset_solar_pv_confirmation(state)
-    schedule_solar_temperature_recheck(cfg, checked_at)
-    save_state()
     if started_any:
         record_solar_event(f"Automatic heating started (Water {water_temperature:.1f}°C)")
+        log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, "heater activated")
         notify_automation_started(cfg, water_temperature, threshold)
     else:
         record_solar_event(f"Heating already running (Water {water_temperature:.1f}°C)")
+        log_solar_scheduled_check(checked_at, pv_production, water_temperature, solar, "heater already active")
+    schedule_solar_temperature_recheck(cfg, checked_at)
+    save_state()
 
 
 def scheduler_tick():
@@ -2285,6 +2718,7 @@ def scheduler_tick():
     p = cfg["pump"]
     today = date.today().isoformat()
     sched = _runtime["scheduler"]
+    current = now()
 
     # A mezzanotte/nuovo giorno: riabilita automatico sospeso e chiudi timer manuali scaduti.
     if sched.get("auto_suspended_date") and sched["auto_suspended_date"] != today:
@@ -2295,7 +2729,6 @@ def scheduler_tick():
     if not p.get("enabled", True) or p.get("mode") == "disabled":
         return
 
-    current = now()
     pump_active = pump_status_from_runtime(cfg)
 
     # Timer manuale: se scaduto spegne la pompa.
@@ -2343,7 +2776,9 @@ def background_loop():
     record_event("Application", "", "Application started", "System", f"Version {app_version(cfg)}")
     st = load_state()
     if isinstance(st.get("scheduler"), dict):
-        _runtime["scheduler"].update(st["scheduler"])
+        legacy_scheduler = dict(st["scheduler"])
+        legacy_scheduler.pop("garden_lights_until", None)
+        _runtime["scheduler"].update(legacy_scheduler)
     if isinstance(st.get("solar_heating"), dict):
         _runtime["solar_heating"].update(st["solar_heating"])
     refresh_all_relays(source="startup", notify_on_error=True)
@@ -2408,8 +2843,72 @@ def stop_weather_service():
 atexit.register(stop_weather_service)
 
 
+def start_netatmo_service():
+    global netatmo_service
+    if netatmo_service is None:
+        cfg = load_config()
+        netatmo_service = NetatmoService(
+            cfg.get("netatmo", DEFAULT_NETATMO_CONFIG),
+            NETATMO_CONFIG_PATH,
+            NETATMO_TOKENS_PATH,
+            NETATMO_RAIN_HISTORY_PATH,
+            event_callback=record_event,
+            log_callback=log
+        )
+    netatmo_service.start()
+    return netatmo_service
+
+
+def stop_netatmo_service():
+    if netatmo_service is not None:
+        netatmo_service.stop()
+
+
+atexit.register(stop_netatmo_service)
+
+
 def weather_snapshot_for_history():
-    return weather_service.snapshot() if weather_service else {}
+    snapshot = weather_service.snapshot() if weather_service else {}
+    result = dict(snapshot) if isinstance(snapshot, dict) else {}
+    locations = dict(result.get("locations") or {})
+    netatmo = netatmo_service.snapshot() if netatmo_service else {}
+    for device in [
+        *(netatmo.get("stations") or {}).values(),
+        *(netatmo.get("modules") or {}).values()
+    ]:
+        metric = (device.get("metrics") or {}).get("temperature")
+        device_id = str(device.get("id") or "").strip()
+        if not device_id or not metric or metric.get("value") is None:
+            continue
+        locations[f"netatmo:{device_id}"] = {
+            "label": device.get("name") or device_id,
+            "metrics": {
+                "temperature": {
+                    **metric,
+                    "source": "netatmo",
+                    "online": device.get("online") is not False,
+                    "placeholder": False
+                }
+            }
+        }
+    result["locations"] = locations
+    return result
+
+
+def netatmo_device_house_id(device):
+    home_id = str((device or {}).get("home_id") or "")
+    configured = {
+        "5984356be6da232ab78b4a22": "opicina",
+        "659339314bc6fec2770fff76": "cesclans"
+    }.get(home_id)
+    if configured:
+        return configured
+    name = str((device or {}).get("home_name") or "").strip().lower()
+    if "cesclans" in name or "cezklanc" in name:
+        return "cesclans"
+    if "opicina" in name or "opcine" in name:
+        return "opicina"
+    return None
 
 
 def start_history_service():
@@ -2436,18 +2935,205 @@ def stop_history_service():
 atexit.register(stop_history_service)
 
 
+def cesclans_weather_snapshot():
+    return netatmo_service.snapshot() if netatmo_service else {}
+
+
+def cesclans_climate_snapshot():
+    try:
+        hvac_devices = intesis.get_all_devices() if intesis.is_configured() else []
+        intesis_driver = getattr(intesis, "_default_driver", None)
+        intesis_status = intesis_driver.status() if intesis_driver is not None else {}
+        if intesis_driver is not None:
+            intesis_status["poll_seconds"] = intesis_driver.poll_seconds
+    except Exception as exc:
+        log(f"Winter energy Intesis snapshot unavailable: {exc}", level="DEBUG")
+        hvac_devices = []
+        intesis_status = {}
+    return {"devices": hvac_devices, "status": intesis_status}
+
+
+def cesclans_pool_module_enabled():
+    context = house_registry.get("cesclans")
+    return bool(context and context.module_enabled("Pool"))
+
+
+def cesclans_pool_status_snapshot():
+    cfg = load_config()
+    pump = cfg.get("pump") if isinstance(cfg.get("pump"), dict) else {}
+    return {
+        "enabled": cesclans_pool_module_enabled(),
+        "mode": pump.get("mode"),
+        "season_enabled": bool(pump.get("enabled", True)) and pump.get("mode") != "disabled",
+    }
+
+
+def configure_provider_registry():
+    with _provider_registry_lock:
+        if provider_registry.get("cesclans") is not None:
+            return
+        context = house_registry.get("cesclans")
+        if context is None:
+            return
+        providers = HouseProviders(
+            house_id=context.id,
+            energy=GoodWeEnergyProvider(goodwe_status_snapshot, goodwe_viewer_snapshot)
+            if context.provider_id("energy") == "goodwe" else None,
+            weather=NetatmoWeatherProvider(cesclans_weather_snapshot)
+            if context.provider_id("weather") == "netatmo" else None,
+            climate=IntesisClimateProvider(cesclans_climate_snapshot)
+            if context.provider_id("climate") == "intesis" else None,
+            pool=CesclansPoolProvider(cesclans_pool_module_enabled, cesclans_pool_status_snapshot)
+            if context.provider_id("pool") == "cesclans_pool" else None,
+        )
+        provider_registry.register(providers)
+
+
+def providers_for_house(house_id=None):
+    context = current_house_context(house_id)
+    if context is None:
+        return None
+    configure_provider_registry()
+    return provider_registry.get(context.id)
+
+
+def energy_provider_for_house(house_id=None):
+    providers = providers_for_house(house_id)
+    return providers.energy if providers else None
+
+
+def winter_snapshot_provider():
+    providers = providers_for_house("cesclans")
+    return {
+        "weather": providers.weather.get_snapshot() if providers and providers.weather else {},
+        "energy": providers.energy.get_status_snapshot() if providers and providers.energy else {},
+        "climate": providers.climate.get_snapshot() if providers and providers.climate else {},
+    }
+
+
+def winter_energy_context_provider():
+    source = "config.pump.mode / config.pump.enabled (pool scheduler)"
+    try:
+        cfg = load_config()
+        pump = cfg.get("pump")
+    except Exception:
+        return {"energy_context": "UNKNOWN", "source": source}
+    if not isinstance(pump, dict):
+        return {"energy_context": "UNKNOWN", "source": source}
+    # Keep this mapping identical to the existing scheduler disable condition.
+    context = "POOL_DISABLED" if not pump.get("enabled", True) or pump.get("mode") == "disabled" else "POOL_ACTIVE"
+    return {"energy_context": context, "source": source}
+
+
+def start_winter_energy_service():
+    global winter_energy_service
+    if winter_energy_service is None:
+        cfg = load_config()
+        winter_energy_service = WinterEnergyService(
+            HISTORY_DB_PATH,
+            winter_config_for_house(cfg, WINTER_HOUSE_ID),
+            winter_snapshot_provider,
+            energy_context_provider=winter_energy_context_provider,
+            log_callback=log,
+        )
+        winter_energy_service.update_target_temperature(
+            winter_target_for_house(cfg, WINTER_HOUSE_ID)
+        )
+    winter_energy_service.start()
+    return winter_energy_service
+
+
+def stop_winter_energy_service():
+    if winter_energy_service is not None:
+        winter_energy_service.stop()
+
+
+atexit.register(stop_winter_energy_service)
+
+
+def start_intesis_driver():
+    if not intesis.is_configured():
+        cfg = load_config()
+        intesis.configure(cfg.get("intesis", {}), log_callback=log)
+    intesis.connect()
+    return intesis
+
+
+def stop_intesis_driver():
+    intesis.disconnect()
+
+
+atexit.register(stop_intesis_driver)
+
+
+@app.before_request
+def bind_request_house_context():
+    first_path_segment = request.path.strip("/").split("/", 1)[0].lower()
+    g.current_house = house_registry.get(first_path_segment) or house_registry.default("cesclans")
+
+
 @app.route("/")
 def index():
+    return render_template("control_center.html", houses=load_houses_metadata())
+
+
+def render_house_dashboard(house_id):
     cfg = load_config()
     lang = selected_language(cfg, persist_browser=True)
-    return render_template("index.html", language=lang)
+    context = current_house_context(house_id)
+    if context is None:
+        abort(404)
+    return render_template("index.html", language=lang, house=context.to_public_dict())
+
+
+@app.route("/cesclans")
+def cesclans_dashboard():
+    return render_house_dashboard("cesclans")
+
+
+@app.route("/opicina")
+def opicina_dashboard():
+    return render_house_dashboard("opicina")
 
 
 @app.route("/viewer")
 def viewer():
+    return render_house_viewer("cesclans")
+
+
+def render_house_viewer(house_id):
     cfg = load_config()
     require_viewer_access(cfg)
-    return render_template("viewer.html", refresh_seconds=viewer_refresh_seconds(cfg))
+    context = current_house_context(house_id)
+    if context is None:
+        abort(404)
+    return render_template(
+        "viewer.html",
+        refresh_seconds=viewer_refresh_seconds(cfg),
+        house=context.to_public_dict()
+    )
+
+
+@app.route("/viewer/cesclans")
+def viewer_cesclans():
+    return render_house_viewer("cesclans")
+
+
+@app.route("/viewer/opicina")
+def viewer_opicina():
+    return render_house_viewer("opicina")
+
+
+@app.route("/winter")
+def winter_dashboard():
+    return render_template("winter.html", viewer=False, back_href="/cesclans")
+
+
+@app.route("/viewer/winter")
+def viewer_winter_dashboard():
+    cfg = load_config()
+    require_viewer_access(cfg)
+    return render_template("winter.html", viewer=True, back_href=viewer_href())
 
 
 @app.route("/viewer/history")
@@ -2455,7 +3141,59 @@ def viewer_history():
     cfg = load_config()
     require_viewer_access(cfg)
     lang = selected_language(cfg, persist_browser=True)
-    return render_template("history.html", language=lang, back_href=viewer_href(), back_i18n="nav.viewer")
+    return render_template(
+        "history.html",
+        language=lang,
+        back_href=viewer_href(),
+        back_i18n="nav.viewer",
+        initial_location="cesclans",
+        locked_location=True,
+        viewer=True,
+        viewer_nav={
+            "cesclans": viewer_href("/viewer/cesclans"),
+            "opicina": viewer_href("/viewer/opicina"),
+            "comparisons": viewer_href("/viewer/comparisons"),
+            "winter": viewer_href("/viewer/winter"),
+            "system": viewer_href("/viewer")
+        }
+    )
+
+
+def render_viewer_house_history(location, back_path):
+    cfg = load_config()
+    require_viewer_access(cfg)
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template(
+        "history.html",
+        language=lang,
+        back_href=viewer_href(back_path),
+        back_i18n="nav.viewer",
+        initial_location=location,
+        locked_location=True,
+        viewer=True,
+        viewer_nav={
+            "cesclans": viewer_href("/viewer/cesclans"),
+            "opicina": viewer_href("/viewer/opicina"),
+            "comparisons": viewer_href("/viewer/comparisons"),
+            "winter": viewer_href("/viewer/winter"),
+            "system": viewer_href("/viewer")
+        }
+    )
+
+
+@app.route("/viewer/cesclans/history")
+def viewer_cesclans_history():
+    return render_viewer_house_history("cesclans", "/viewer/cesclans")
+
+
+@app.route("/viewer/opicina/history")
+def viewer_opicina_history():
+    return render_viewer_house_history("opicina", "/viewer/opicina")
+
+
+@app.route("/viewer/comparisons")
+def viewer_comparisons():
+    return render_viewer_house_history("compare", "/viewer")
 
 
 @app.route("/viewer/report")
@@ -2478,7 +3216,34 @@ def viewer_event_log():
 def history():
     cfg = load_config()
     lang = selected_language(cfg, persist_browser=True)
-    return render_template("history.html", language=lang)
+    return render_template("history.html", language=lang, back_href="/", initial_location="opicina")
+
+
+def render_house_history(location, back_href):
+    cfg = load_config()
+    lang = selected_language(cfg, persist_browser=True)
+    return render_template(
+        "history.html",
+        language=lang,
+        back_href=back_href,
+        initial_location=location,
+        locked_location=True
+    )
+
+
+@app.route("/cesclans/history")
+def cesclans_history():
+    return render_house_history("cesclans", "/cesclans")
+
+
+@app.route("/opicina/history")
+def opicina_history():
+    return render_house_history("opicina", "/opicina")
+
+
+@app.route("/comparisons")
+def comparisons():
+    return render_house_history("compare", "/")
 
 
 @app.route("/api/i18n")
@@ -2510,6 +3275,7 @@ def api_language():
 @app.route("/api/status")
 def api_status():
     cfg = load_config()
+    house_providers = providers_for_house()
     app_cfg = cfg.get("app", {})
     version = app_version(cfg)
     port = int(app_cfg.get("port", 5000))
@@ -2519,10 +3285,11 @@ def api_status():
     pump["active"] = pump_status_from_runtime(cfg)
     pump["remaining_seconds"] = max(0, int((end - now()).total_seconds())) if pump["active"] else 0
     with _lock:
-        return jsonify({
+        payload = {
             "version": version,
             "port": port,
             "app": {"version": version, "port": port},
+            "refresh_seconds": 60,
             "language": selected_language(cfg),
             "languages": supported_languages(),
             "app_meta": f"{version} · server su porta {port}",
@@ -2531,11 +3298,23 @@ def api_status():
             "relays": _runtime["relays"],
             "temperatures": temperature_service.snapshot() if temperature_service else {},
             "weather": weather_service.snapshot() if weather_service else {},
-            "goodwe": goodwe_status_snapshot(),
+            "netatmo": house_providers.weather.get_snapshot() if house_providers and house_providers.weather else {},
+            "goodwe": house_providers.energy.get_status_snapshot() if house_providers and house_providers.energy else {},
+            "heater": pool_heater_snapshot(cfg),
             "heater_statistics": heater_statistics_snapshot(),
             "statistics": statistics_snapshot(cfg),
             "pump": pump,
             "solar_heating": solar_heating_snapshot(cfg),
+            "garden_light_timer": (
+                garden_light_timer_service.status()
+                if garden_light_timer_service is not None
+                else {
+                    "timer_id": None, "state": "INACTIVE", "active": False,
+                    "deadline_at": None, "remaining_seconds": 0,
+                    "off_attempt_count": 0, "next_retry_at": None,
+                    "last_error": None, "data_quality": "service_not_started",
+                }
+            ),
             "runtime": {
                 "started_at": _runtime["started_at"],
                 "last_poll": _runtime["last_poll"],
@@ -2545,12 +3324,18 @@ def api_status():
                 "heater_safe_stop": safe_stop_snapshot()
             },
             "now": now().isoformat(timespec="seconds")
-        })
+        }
+        try:
+            log("/api/status JSON returned:\n" + json.dumps(payload, indent=2, ensure_ascii=False), level="DEBUG")
+        except Exception as exc:
+            log(f"/api/status JSON logging failed: {exc}", level="DEBUG")
+        return jsonify(payload)
 
 
 @app.route("/api/viewer/status")
 def api_viewer_status():
     cfg = load_config()
+    house_providers = providers_for_house("cesclans")
     require_viewer_access(cfg)
     version = app_version(cfg)
     pump_cfg = cfg.get("pump", {})
@@ -2573,13 +3358,15 @@ def api_viewer_status():
     return jsonify({
         "ok": True,
         "refresh_seconds": viewer_refresh_seconds(cfg),
-        "energy": goodwe_viewer_snapshot(),
+        "energy": house_providers.energy.get_dashboard_snapshot() if house_providers and house_providers.energy else {},
         "temperatures": temperature_viewer_snapshot(),
         "weather": weather_service.snapshot() if weather_service else {},
+        "netatmo": house_providers.weather.get_snapshot() if house_providers and house_providers.weather else {},
         "pool": {
             "pump": pump,
             "heater_active": viewer_relay_state(heater_dev, heater_no)
         },
+        "heater": pool_heater_snapshot(cfg),
         "garden": {
             "lights_active": viewer_relay_state("garden", garden_relay_no)
         },
@@ -2614,7 +3401,17 @@ def api_relay():
     dev = data["device"]
     relay = str(data["relay"])
     active = bool(data["active"])
-    status = set_one(cfg, dev, relay, active, source="manual")
+    garden_dev, garden_relay = garden_lights_relay(cfg)
+    if dev == garden_dev and relay == garden_relay:
+        service = start_garden_light_timer_service()
+        timer_result = service.manual_on() if active else service.manual_off()
+        status = timer_result.get("relay_status") or {
+            "ok": timer_result.get("ok", False),
+            "active": active if timer_result.get("ok") else None,
+            "error": timer_result.get("error"),
+        }
+    else:
+        status = set_one(cfg, dev, relay, active, source="manual")
     record_event(
         relay_label(cfg, dev, relay),
         f"Relay {relay}",
@@ -2640,6 +3437,30 @@ def api_relay():
     return jsonify({"ok": status.get("ok"), "status": status})
 
 
+@app.route("/api/garden/lights/timer", methods=["GET", "POST"])
+def api_garden_lights_timer():
+    service = start_garden_light_timer_service()
+    if request.method == "GET":
+        return jsonify({"ok": True, **service.status()})
+    data = request.get_json(silent=True) or {}
+    try:
+        minutes = int(data.get("minutes"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Minutes must be an integer"}), 400
+    if minutes < 1 or minutes > 1440:
+        return jsonify({"ok": False, "error": "Minutes must be between 1 and 1440"}), 400
+    result = service.start_timer(minutes * 60)
+    if not result.get("ok"):
+        return jsonify(result), 503
+    return jsonify(result)
+
+
+@app.route("/api/garden/lights/timer/cancel", methods=["POST"])
+def api_garden_lights_timer_cancel():
+    service = start_garden_light_timer_service()
+    return jsonify(service.cancel_current("USER_CANCELLED"))
+
+
 @app.route("/api/relays/refresh", methods=["POST"])
 def api_relays_refresh():
     refresh_all_relays(source="manual_refresh", notify_on_error=True)
@@ -2654,7 +3475,8 @@ def api_relays_refresh():
 @app.route("/api/heater/safe_stop", methods=["POST"])
 def api_heater_safe_stop():
     started, message = start_heater_safe_stop(source="manual_safe_stop")
-    return jsonify({"ok": True, "message": message, "started": started, "safe_stop": safe_stop_snapshot()})
+    response = {"ok": started, "message": message, "started": started, "safe_stop": safe_stop_snapshot()}
+    return jsonify(response), (200 if started else 502)
 
 
 @app.route("/api/heater/statistics/reset_seasonal", methods=["POST"])
@@ -2700,6 +3522,146 @@ def api_history():
     })
 
 
+@app.route("/api/netatmo/history")
+def api_netatmo_history():
+    period = request.args.get("period", "24h")
+    house_id = str(request.args.get("house") or "cesclans")
+    if history_service is None or netatmo_service is None:
+        return jsonify({"ok": False, "error": "History service unavailable", "series": []}), 503
+    snapshot = netatmo_service.snapshot() or {}
+    labels = {}
+    for device in [
+        *(snapshot.get("stations") or {}).values(),
+        *(snapshot.get("modules") or {}).values()
+    ]:
+        if netatmo_device_house_id(device) != house_id:
+            continue
+        if (device.get("metrics") or {}).get("temperature", {}).get("value") is None:
+            continue
+        device_id = str(device.get("id") or "").strip()
+        if device_id:
+            labels[device_id] = device.get("name") or device_id
+    return jsonify({
+        "ok": True,
+        **history_service.device_graph_data(period=period, device_labels=labels),
+        "now": now().isoformat(timespec="seconds")
+    })
+
+
+@app.route("/api/winter/current")
+def api_winter_current():
+    if winter_energy_service is None:
+        return jsonify({"ok": False, "error": "Winter energy service unavailable"}), 503
+    try:
+        return jsonify({"ok": True, **winter_energy_service.current()})
+    except Exception as exc:
+        log(f"Winter current API failed: {exc}")
+        return jsonify({"ok": False, "error": "Winter data temporarily unavailable"}), 503
+
+
+@app.route("/api/winter/settings", methods=["GET", "POST"])
+def api_winter_settings():
+    if request.method == "GET":
+        cfg = load_config()
+        return jsonify({
+            "ok": True,
+            "house_id": WINTER_HOUSE_ID,
+            "target_temperature": winter_target_for_house(cfg, WINTER_HOUSE_ID),
+            "minimum": WINTER_TARGET_MIN,
+            "maximum": WINTER_TARGET_MAX,
+            "step": WINTER_TARGET_STEP,
+            "simulation_only": True,
+        })
+
+    data = request.get_json(silent=True)
+    raw_value = data.get("target_temperature") if isinstance(data, dict) else None
+    if raw_value is None or raw_value == "" or isinstance(raw_value, bool):
+        return jsonify({"ok": False, "error": "La temperatura obiettivo è obbligatoria e deve essere numerica."}), 400
+    try:
+        target = float(raw_value)
+    except (TypeError, ValueError, OverflowError):
+        return jsonify({"ok": False, "error": "La temperatura obiettivo deve essere numerica."}), 400
+    if not math.isfinite(target):
+        return jsonify({"ok": False, "error": "La temperatura obiettivo deve essere un numero finito."}), 400
+    if target < WINTER_TARGET_MIN or target > WINTER_TARGET_MAX:
+        return jsonify({
+            "ok": False,
+            "error": f"La temperatura obiettivo deve essere compresa tra {WINTER_TARGET_MIN:.1f} e {WINTER_TARGET_MAX:.1f} °C.",
+        }), 400
+    if abs((target - WINTER_TARGET_MIN) / WINTER_TARGET_STEP - round((target - WINTER_TARGET_MIN) / WINTER_TARGET_STEP)) > 1e-9:
+        return jsonify({"ok": False, "error": "La temperatura obiettivo deve usare incrementi di 0,5 °C."}), 400
+    target = round(target, 1)
+    with _lock:
+        cfg = load_config()
+        houses = cfg.setdefault("houses", {})
+        house = houses.setdefault(WINTER_HOUSE_ID, {})
+        house.setdefault("winter", {})["target_temperature"] = target
+        cfg.setdefault("winter", {})["target_temp"] = target
+        save_config_atomic(cfg)
+        if winter_energy_service is not None:
+            winter_energy_service.update_target_temperature(target)
+    log(f"Winter simulated target updated for {WINTER_HOUSE_ID}: {target:.1f} °C")
+    return jsonify({
+        "ok": True,
+        "house_id": WINTER_HOUSE_ID,
+        "target_temperature": target,
+        "simulation_only": True,
+        "hvac_command_sent": False,
+    })
+
+
+@app.route("/api/winter/history")
+def api_winter_history():
+    if winter_energy_service is None:
+        return jsonify({"ok": False, "error": "Winter energy service unavailable", "samples": []}), 503
+    try:
+        samples = winter_energy_service.history(
+            hours=request.args.get("hours", 24),
+            limit=request.args.get("limit", 1000),
+        )
+        return jsonify({"ok": True, "samples": samples, "count": len(samples)})
+    except Exception as exc:
+        log(f"Winter history API failed: {exc}")
+        return jsonify({"ok": False, "error": "Winter history temporarily unavailable", "samples": []}), 503
+
+
+@app.route("/api/winter/status")
+def api_winter_status():
+    if winter_energy_service is None:
+        return jsonify({"ok": False, "enabled": False, "error": "Winter energy service unavailable"}), 503
+    try:
+        return jsonify({"ok": True, **winter_energy_service.status()})
+    except Exception as exc:
+        log(f"Winter status API failed: {exc}")
+        return jsonify({"ok": False, "error": "Winter status temporarily unavailable"}), 503
+
+
+@app.route("/api/winter/decisions")
+def api_winter_decisions():
+    if winter_energy_service is None:
+        return jsonify({"ok": False, "error": "Winter energy service unavailable", "decisions": []}), 503
+    try:
+        decisions = winter_energy_service.decision_history(
+            hours=request.args.get("hours", 24),
+            limit=request.args.get("limit", 100),
+        )
+        return jsonify({"ok": True, "decisions": decisions, "count": len(decisions)})
+    except Exception as exc:
+        log(f"Winter decision history API failed: {exc}")
+        return jsonify({"ok": False, "error": "Winter decision history temporarily unavailable", "decisions": []}), 503
+
+
+@app.route("/api/winter/decisions/daily")
+def api_winter_decisions_daily():
+    if winter_energy_service is None:
+        return jsonify({"ok": False, "error": "Winter energy service unavailable"}), 503
+    try:
+        return jsonify({"ok": True, **winter_energy_service.decision_daily_summary(request.args.get("date"))})
+    except Exception as exc:
+        log(f"Winter decision daily summary API failed: {exc}")
+        return jsonify({"ok": False, "error": "Winter decision summary temporarily unavailable"}), 503
+
+
 @app.route("/api/events")
 def api_events():
     with _lock:
@@ -2712,19 +3674,221 @@ def api_events():
     })
 
 
+@app.route("/api/intesis/status")
+def api_intesis_status():
+    if not intesis.is_configured():
+        start_intesis_driver()
+    return jsonify([
+        intesis_device_api_status(device)
+        for device in intesis.get_all_devices()
+    ])
+
+
+def intesis_capability_values(device, key):
+    values = device.get(key)
+    if not isinstance(values, (list, tuple, set)):
+        return None
+    return [str(value).lower() for value in values if value is not None]
+
+
+def intesis_device_api_status(device):
+    status = dict(device) if isinstance(device, dict) else {}
+    for key in (
+        "supported_modes",
+        "supported_fan_speeds",
+        "supported_vertical_vanes",
+        "supported_horizontal_vanes",
+    ):
+        status[key] = intesis_capability_values(status, key)
+    if not isinstance(status.get("supports_vertical_vane"), bool):
+        status["supports_vertical_vane"] = status.get("vertical_vane") is not None
+    if not isinstance(status.get("supports_horizontal_vane"), bool):
+        status["supports_horizontal_vane"] = status.get("horizontal_vane") is not None
+    return status
+
+
+def intesis_command_payload(value_name):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None, None, (jsonify({
+            "ok": False,
+            "error": "Request body must be a JSON object"
+        }), 400)
+
+    device_id = str(data.get("device_id") or "").strip()
+    if not device_id:
+        return None, None, (jsonify({
+            "ok": False,
+            "error": "device_id is required"
+        }), 400)
+    if value_name not in data:
+        return None, None, (jsonify({
+            "ok": False,
+            "error": f"{value_name} is required"
+        }), 400)
+
+    if not intesis.is_configured():
+        start_intesis_driver()
+    if intesis.get_device(device_id) is None:
+        return None, None, (jsonify({
+            "ok": False,
+            "error": f"Unknown Intesis device: {device_id}"
+        }), 404)
+    return device_id, data.get(value_name), None
+
+
+def intesis_command_response(device_id, command_name, command_succeeded):
+    if not command_succeeded:
+        log(f"Intesis API command failed: {command_name} | device={device_id}")
+        return jsonify({
+            "ok": False,
+            "error": f"Intesis command failed: {command_name}",
+            "device_id": device_id
+        }), 502
+
+    device = intesis.get_device(device_id)
+    log(
+        f"Intesis API command completed: {command_name} | device={device_id}",
+        level="DEBUG"
+    )
+    return jsonify({
+        "ok": True,
+        "device": intesis_device_api_status(device)
+    })
+
+
+@app.route("/api/intesis/power", methods=["POST"])
+def api_intesis_power():
+    device_id, power, error_response = intesis_command_payload("power")
+    if error_response:
+        return error_response
+    if not isinstance(power, bool):
+        return jsonify({"ok": False, "error": "power must be a boolean"}), 400
+    command_succeeded = (
+        intesis.power_on(device_id) if power else intesis.power_off(device_id)
+    )
+    return intesis_command_response(device_id, "power", command_succeeded)
+
+
+@app.route("/api/intesis/mode", methods=["POST"])
+def api_intesis_mode():
+    device_id, mode, error_response = intesis_command_payload("mode")
+    if error_response:
+        return error_response
+    mode = str(mode or "").strip().lower()
+    if mode not in {"auto", "cool", "heat", "dry", "fan"}:
+        return jsonify({"ok": False, "error": "Invalid mode"}), 400
+    return intesis_command_response(
+        device_id,
+        "mode",
+        intesis.set_mode(device_id, mode)
+    )
+
+
+@app.route("/api/intesis/temperature", methods=["POST"])
+def api_intesis_temperature():
+    device_id, temperature, error_response = intesis_command_payload("temperature")
+    if error_response:
+        return error_response
+    try:
+        if isinstance(temperature, bool):
+            raise ValueError
+        temperature = round(float(temperature), 1)
+        if not math.isfinite(temperature):
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({
+            "ok": False,
+            "error": "temperature must be a finite number"
+        }), 400
+    device = intesis.get_device(device_id) or {}
+    minimum = device.get("minimum_target_temperature")
+    maximum = device.get("maximum_target_temperature")
+    try:
+        minimum = float(minimum) if minimum is not None else None
+    except (TypeError, ValueError):
+        minimum = None
+    try:
+        maximum = float(maximum) if maximum is not None else None
+    except (TypeError, ValueError):
+        maximum = None
+    if minimum is not None and temperature < minimum:
+        return jsonify({
+            "ok": False,
+            "error": f"temperature must be at least {minimum}"
+        }), 400
+    if maximum is not None and temperature > maximum:
+        return jsonify({
+            "ok": False,
+            "error": f"temperature must be at most {maximum}"
+        }), 400
+    return intesis_command_response(
+        device_id,
+        "temperature",
+        intesis.set_temperature(device_id, temperature)
+    )
+
+
+@app.route("/api/intesis/fan", methods=["POST"])
+def api_intesis_fan():
+    device_id, speed, error_response = intesis_command_payload("speed")
+    if error_response:
+        return error_response
+    speed = str(speed or "").strip().lower()
+    if speed not in {"auto", "quiet", "low", "medium", "high"}:
+        return jsonify({"ok": False, "error": "Invalid fan speed"}), 400
+    return intesis_command_response(
+        device_id,
+        "fan",
+        intesis.set_fan_speed(device_id, speed)
+    )
+
+
+def intesis_vane_response(value_name, command_name, command):
+    device_id, position, error_response = intesis_command_payload(value_name)
+    if error_response:
+        return error_response
+    position = str(position or "").strip().lower()
+    if not position:
+        return jsonify({"ok": False, "error": "position cannot be empty"}), 400
+    return intesis_command_response(
+        device_id,
+        command_name,
+        command(device_id, position)
+    )
+
+
+@app.route("/api/intesis/vertical_vane", methods=["POST"])
+def api_intesis_vertical_vane():
+    return intesis_vane_response(
+        "position",
+        "vertical_vane",
+        intesis.set_vertical_vane
+    )
+
+
+@app.route("/api/intesis/horizontal_vane", methods=["POST"])
+def api_intesis_horizontal_vane():
+    return intesis_vane_response(
+        "position",
+        "horizontal_vane",
+        intesis.set_horizontal_vane
+    )
+
+
 @app.route("/statistics")
 @app.route("/report")
 def statistics_page():
     cfg = load_config()
     lang = selected_language(cfg, persist_browser=True)
-    return render_template("statistics.html", language=lang)
+    return render_template("statistics.html", language=lang, back_href="/cesclans")
 
 
 @app.route("/event-log")
 def event_log_page():
     cfg = load_config()
     lang = selected_language(cfg, persist_browser=True)
-    return render_template("event_log.html", language=lang)
+    return render_template("event_log.html", language=lang, back_href="/cesclans")
 
 
 @app.route("/api/solar_heating/config", methods=["POST"])
@@ -2874,7 +4038,11 @@ def api_telegram_test():
 if __name__ == "__main__":
     start_temperature_service()
     start_weather_service()
+    start_netatmo_service()
     start_history_service()
+    start_intesis_driver()
+    start_winter_energy_service()
+    start_garden_light_timer_service()
     threading.Thread(target=background_loop, daemon=True).start()
     threading.Thread(target=goodwe_background_loop, daemon=True).start()
     cfg = load_config()

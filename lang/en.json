@@ -24,6 +24,64 @@
     "eventLog": "📜 Event Log",
     "refreshRelays": "Refresh relays"
   },
+  "portal": {
+    "home": "Home",
+    "netatmo": "Netatmo / Environment",
+    "pool": "Pool",
+    "energy": "Inverter / Energy",
+    "weather": "Weather",
+    "history": "History / Report",
+    "events": "Event Log",
+    "settings": "Settings",
+    "open": "Open",
+    "historySummary": "Graphs, reports and statistics",
+    "eventsSummary": "Recent events and communications"
+  },
+  "airConditioning": {
+    "title": "Air Conditioning",
+    "nav": "Air Conditioning",
+    "pageTitle": "❄️ Air Conditioning",
+    "subtitle": "Manual monitoring and control of Intesis air conditioners",
+    "devices": "Devices",
+    "unnamedDevice": "Air conditioner",
+    "lastSuccessfulUpdate": "Last successful update",
+    "loading": "Loading air conditioners...",
+    "noDevices": "No air conditioners available",
+    "available": "{count} devices available",
+    "unavailable": "Intesis unavailable",
+    "loadError": "Unable to load air conditioners: {error}",
+    "invalidResponse": "Invalid Intesis response",
+    "groups": {
+      "opicina": "🏠 Opicina",
+      "cesclans": "🏡 Cesclans"
+    },
+    "power": "Power",
+    "mode": "Mode",
+    "roomTemperature": "Room temperature",
+    "targetTemperature": "Target temperature",
+    "fanSpeed": "Fan speed",
+    "verticalVane": "Vertical vane",
+    "horizontalVane": "Horizontal vane",
+    "wifi": "WiFi signal",
+    "wifiLevels": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "medium": "Medium",
+      "weak": "Weak",
+      "veryWeak": "Very weak"
+    },
+    "workingHours": "Working hours",
+    "currentError": "Current error",
+    "errorCode": "Error code",
+    "noError": "🟢 No errors",
+    "turnOn": "🟢 Turn on",
+    "turnOff": "🔴 Turn off",
+    "swing": "AUTO / SWING",
+    "autoStop": "AUTO / STOP",
+    "sending": "Sending...",
+    "commandCompleted": "Command completed",
+    "commandFailed": "Command failed"
+  },
   "status": {
     "on": "ON",
     "off": "OFF",
@@ -74,6 +132,22 @@
     "communicationStatus": "Sensor communication status",
     "location": "Location: {location}",
     "placeholder": "--",
+    "todayForecast": "Today's forecast",
+    "forecastUnavailable": "Forecast unavailable",
+    "temperatureRange": "Min {min} · Max {max}",
+    "rainForecast": "Rain {probability} · {amount}",
+    "windForecast": "Wind up to {speed}",
+    "conditions": {
+      "clear": "Clear sky",
+      "partlyCloudy": "Partly cloudy",
+      "fog": "Fog",
+      "drizzle": "Drizzle",
+      "rain": "Rain",
+      "snow": "Snow",
+      "showers": "Showers",
+      "thunderstorm": "Thunderstorm",
+      "unknown": "Variable weather"
+    },
     "metrics": {
       "temperature": "Temperature",
       "humidity": "Humidity"
@@ -83,6 +157,47 @@
       "partial": "🟡 Some weather sensors offline",
       "offline": "🔴 Weather sensors offline",
       "unconfigured": "No weather sensors configured"
+    }
+  },
+  "netatmo": {
+    "title": "🌡 Netatmo",
+    "communicationStatus": "Netatmo communication status",
+    "noHomes": "No Netatmo homes",
+    "noValues": "No values",
+    "home": "Netatmo home",
+    "device": "Netatmo device",
+    "module": "Netatmo module",
+    "devicesOnline": "{count} devices online",
+    "rooms": {
+      "livingRoom": "Living Room",
+      "masterBedroom": "Master Bedroom",
+      "bedroom": "Bedroom",
+      "childrensRoom": "Children's Room",
+      "outdoor": "Outdoor",
+      "rainGauge": "Rain Gauge",
+      "windSensor": "Wind Sensor"
+    },
+    "metrics": {
+      "temperature": "Temperature",
+      "humidity": "Humidity",
+      "pressure": "Pressure",
+      "noise": "Noise",
+      "rainToday": "Rain today",
+      "daysSinceLastRain": "Days since the last rainy day",
+      "notYetAvailable": "Not available yet",
+      "windSpeed": "Wind speed",
+      "windGust": "Wind gust",
+      "windDirection": "Wind direction",
+      "indoor": "Indoor",
+      "outdoor": "Outdoor",
+      "wind": "Wind",
+      "battery": "Battery"
+    },
+    "status": {
+      "online": "🟢 Netatmo online",
+      "offline": "🔴 Netatmo offline",
+      "authorizationRequired": "🟡 Netatmo authorization required",
+      "disabled": "Netatmo disabled"
     }
   },
   "solar": {
@@ -98,7 +213,7 @@
     "temperatureCheckInterval": "Temperature check interval (minutes)",
     "earlyCompletionTemperature": "Early completion temperature",
     "earlyCompletionConfirmation": "Confirmation time (minutes)",
-    "minimumPvProduction": "Minimum PV production for heating (W)",
+    "minimumPvProduction": "PV production threshold for heating (W)",
     "pvRunningCheckInterval": "PV running check interval (minutes)",
     "pvConfirmationDelay": "PV confirmation delay (minutes)",
     "saveAutomation": "Save solar automation",
@@ -143,6 +258,7 @@
     "dashboardTitle": "⚡ Miran Energy Manager",
     "dashboardSubtitle": "Real-time energy",
     "dashboardRefresh": "Automatic refresh every 60 seconds",
+    "refreshCountdown": "Next refresh in {seconds}s",
     "houseConsumption": "House Consumption",
     "normalLoads": "Normal Loads",
     "backupLoads": "Backup Loads",
@@ -167,6 +283,16 @@
     "response": "Response: {response} · {ms} ms",
     "turnOn": "Turn on",
     "turnOff": "Turn off"
+  },
+  "heater": {
+    "reason": {
+      "heating": "🟢 Heating",
+      "waiting_check": "🔵 Waiting for scheduled check",
+      "waiting_pv": "🟡 Waiting for PV production",
+      "pump_off": "🔵 Pool pump OFF",
+      "disabled": "⚪ Disabled",
+      "communication_error": "🔴 Communication error"
+    }
   },
   "telegram": {
     "title": "📲 Telegram Notifications",
@@ -254,10 +380,12 @@
       "temperature": "Temperature",
       "humidity": "Humidity"
     },
-    "todayMin": "Today min",
-    "todayMax": "Today max",
-    "periodMin": "Period min",
-    "periodMax": "Period max",
+    "todayTitle": "📅 Today",
+    "allTimeTitle": "🏆 All-time records",
+    "minimum": "Minimum",
+    "maximum": "Maximum",
+    "recordedOn": "Recorded on: {date}",
+    "noRecords": "No records available yet.",
     "graphTitle": "Temperature graph",
     "graphHint": "Mouse wheel to zoom, drag to pan, hover for exact values.",
     "showGraph": "📈 Show graph",

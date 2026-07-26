@@ -4,27 +4,86 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Miran Energy Manager Viewer</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/static/apple-touch-icon-precomposed.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body data-house-id="{{ house.id }}" data-house-name="{{ house.display_name }}" data-viewer="true">
   <main class="wrap viewer-wrap">
     <header class="hero viewer-hero">
       <div>
-        <h1>⚡ Miran Energy Manager</h1>
-        <p class="hero-subtitle">Energia in tempo reale</p>
+        <div class="house-identity">{{ '🏡' if house.id == 'cesclans' else '🏠' }} Casa {{ house.display_name }}</div>
+        <h1>{{ house.display_name }}</h1>
+        <p class="hero-subtitle">Dashboard casa in sola lettura</p>
         <small class="hero-readonly">🔒 Sola lettura</small>
-        <small id="viewerRefreshLine" class="hero-refresh">Aggiornamento automatico ogni {{ refresh_seconds }} secondi</small>
+        <small class="hero-refresh"><span id="viewerRefreshLine">Aggiornamento automatico ogni {{ refresh_seconds }} secondi</span> · <span id="viewerRefreshCountdown">Prossimo aggiornamento tra {{ refresh_seconds }} s</span></small>
       </div>
       <div id="viewerStatus" class="pill gray">Caricamento...</div>
     </header>
 
-    <nav class="row gap nav-actions viewer-nav-actions">
-      <a class="button-link" href="#viewerWeatherCard">🌤 Meteo</a>
-      <a class="button-link viewer-token-link" href="/viewer/history">📈 Storico</a>
-      <a class="button-link viewer-token-link" href="/viewer/report">📊 Report</a>
-      <a class="button-link viewer-token-link" href="/viewer/event-log">📜 Registro eventi</a>
+    <nav class="row gap nav-actions house-primary-nav">
+      <a class="button-link viewer-token-link {{ 'active' if house.id == 'opicina' else '' }}" href="/viewer/opicina">🏠 Opicina</a>
+      <a class="button-link viewer-token-link {{ 'active' if house.id == 'cesclans' else '' }}" href="/viewer/cesclans">🏡 Cesclans</a>
+      <a class="button-link viewer-token-link" href="/viewer/comparisons">📊 Comparisons</a>
+      <a class="button-link viewer-token-link" href="/viewer/winter">❄ Winter Energy</a>
+      <a class="button-link viewer-token-link" href="/viewer">⚙ System</a>
     </nav>
 
+    <nav class="row gap nav-actions viewer-nav-actions portal-section-nav">
+      <a class="button-link" href="#">🏠 Home</a>
+      <a class="button-link" href="#netatmo">🏠 Netatmo</a>
+      {% if house.id == 'cesclans' %}<a class="button-link" href="#pool">🏊 Piscina</a>{% endif %}
+      {% if house.id == 'cesclans' %}<a class="button-link" href="#energy">☀ Energia</a>{% endif %}
+      <a class="button-link" href="#weather">🌤 Meteo</a>
+      <a class="button-link" href="#air-conditioning">❄ Clima</a>
+      <a class="button-link viewer-token-link" href="/viewer/{{ house.id }}/history">📈 Storico</a>
+      <a class="button-link viewer-token-link" href="/viewer/report">📊 Report</a>
+      <a class="button-link viewer-token-link" href="/viewer/event-log">📜 Registro eventi</a>
+      <a class="button-link viewer-token-link" href="/viewer/winter">🏔️ Winter Energy</a>
+    </nav>
+
+    <section id="portalHome" class="portal-home">
+      <div class="portal-grid">
+        <a class="portal-card" href="#netatmo">
+          <span class="portal-icon">🏠</span>
+          <div><h2>Netatmo / Ambiente</h2><p id="portalNetatmoSummary" class="muted">--</p><div id="portalNetatmoBadge" class="pill gray">Caricamento...</div></div>
+        </a>
+        {% if house.id == 'cesclans' %}<a class="portal-card" href="#pool">
+          <span class="portal-icon">🏊</span>
+          <div><h2>Piscina</h2><p id="portalPoolSummary" class="muted">--</p><div id="portalPoolBadge" class="pill gray">Caricamento...</div></div>
+        </a>{% endif %}
+        {% if house.id == 'cesclans' %}<a class="portal-card" href="#energy">
+          <span class="portal-icon">☀</span>
+          <div><h2>Inverter / Energia</h2><p id="portalEnergySummary" class="muted">--</p><div id="portalEnergyBadge" class="pill gray">Caricamento...</div></div>
+        </a>{% endif %}
+        <a class="portal-card" href="#weather">
+          <span class="portal-icon">🌤</span>
+          <div><h2>Meteo</h2><p id="portalWeatherSummary" class="muted">--</p><div id="portalWeatherBadge" class="pill gray">Caricamento...</div></div>
+        </a>
+        <a class="portal-card" href="#air-conditioning">
+          <span class="portal-icon">❄</span>
+          <div><h2>Clima</h2><p id="viewerAirSummary" class="muted">--</p><div id="viewerAirBadge" class="pill gray">Caricamento...</div></div>
+        </a>
+        <a class="portal-card viewer-token-link" href="/viewer/{{ house.id }}/history">
+          <span class="portal-icon">📈</span>
+          <div><h2>Storico / Report</h2><p class="muted">Grafici, report e statistiche</p><div class="pill info">Apri</div></div>
+        </a>
+        <a class="portal-card viewer-token-link" href="/viewer/event-log">
+          <span class="portal-icon">📜</span>
+          <div><h2>Registro eventi</h2><p class="muted">Eventi e comunicazioni recenti</p><div class="pill info">Apri</div></div>
+        </a>
+        <a class="portal-card viewer-token-link" href="/viewer/winter">
+          <span class="portal-icon">🏔️</span>
+          <div><h2>Winter Energy</h2><p class="muted">Learning mode e simulazione</p><div class="pill info">Apri</div></div>
+        </a>
+      </div>
+    </section>
+
+    {% if house.id == 'cesclans' %}
+    <section id="pageEnergy" class="portal-page hidden">
     <section class="energy-dashboard">
       <section class="card energy-card energy-house-card">
         <h2><span class="energy-icon">🏠</span> <span>Consumo Casa</span></h2>
@@ -76,7 +135,12 @@
         <div class="muted viewer-last-goodwe">Ultimo aggiornamento GoodWe: <span id="viewerGoodweUpdate">--</span></div>
       </section>
     </section>
+    </section>
 
+    {% endif %}
+
+    {% if house.id == 'cesclans' %}
+    <section id="pagePool" class="portal-page hidden">
     <section class="card pump-card">
       <div class="pump-layout">
         <div class="pump-controls">
@@ -93,12 +157,6 @@
           </div>
           <div id="viewerPumpInfo" class="muted">Spegnimento previsto: --:--</div>
 
-          <div class="viewer-readonly-grid">
-            <div>
-              <span>🔥 Riscaldatore</span>
-              <strong id="viewerHeaterState">--</strong>
-            </div>
-          </div>
         </div>
 
         <section class="temperature-card pump-temperature-card">
@@ -121,16 +179,19 @@
       </div>
     </section>
 
-    <section id="viewerWeatherCard" class="card weather-card">
-      <h2>🌤 Meteo</h2>
-      <div id="viewerWeatherLocations" class="weather-locations"></div>
-      <div class="temperature-status">
-        <div class="muted">Stato comunicazione sensori</div>
-        <div id="viewerWeatherCommunication" class="pill gray">Caricamento...</div>
+    <section class="card heater-card">
+      <div class="relay-title">
+        <span class="icon">🔥</span>
+        <div>
+          <h2>Riscaldatore</h2>
+          <div class="muted">Piscina · relè 1</div>
+        </div>
       </div>
-      <div class="temperature-footer">
-        <div class="muted">Ultimo aggiornamento</div>
-        <div id="viewerWeatherLastUpdate">--:--:--</div>
+      <div id="viewerHeaterState" class="state unknown">--</div>
+      <div id="viewerHeaterReason" class="heater-reason pill gray">--</div>
+      <div class="stat-grid">
+        <div><span>Modalità</span><strong id="viewerHeaterMode">--</strong></div>
+        <div><span>Ultimo aggiornamento</span><strong id="viewerHeaterLastUpdate">--</strong></div>
       </div>
     </section>
 
@@ -177,10 +238,68 @@
       </div>
       <div id="viewerGardenLights" class="state unknown">--</div>
     </section>
+    </section>
 
+    {% endif %}
+
+    <section id="pageWeather" class="portal-page hidden">
+    <section id="viewerWeatherCard" class="card weather-card">
+      <h2>🌤 Meteo</h2>
+      <div id="viewerWeatherLocations" class="weather-locations"></div>
+      <div class="temperature-status">
+        <div class="muted">Stato comunicazione sensori</div>
+        <div id="viewerWeatherCommunication" class="pill gray">Caricamento...</div>
+      </div>
+      <div class="temperature-footer">
+        <div class="muted">Ultimo aggiornamento</div>
+        <div id="viewerWeatherLastUpdate">--:--:--</div>
+      </div>
+    </section>
+    </section>
+
+    <section id="pageNetatmo" class="portal-page hidden">
+    <section id="viewerNetatmoCard" class="card netatmo-card">
+      <h2>🌡 Netatmo</h2>
+      <div id="viewerNetatmoLocations" class="netatmo-dashboard"></div>
+      <section class="netatmo-history">
+        <div class="row between gap">
+          <div><h3>Andamento temperature</h3><div class="muted">Confronto dei quattro sensori Netatmo</div></div>
+          <button id="netatmoHistoryToggle" type="button">Apri grafico</button>
+        </div>
+        <div id="netatmoHistoryPanel" class="netatmo-history-panel hidden">
+          <div id="netatmoHistoryPeriods" class="history-button-group">
+            <button type="button" class="history-option active" data-period="24h">24 ore</button>
+            <button type="button" class="history-option" data-period="7d">7 giorni</button>
+            <button type="button" class="history-option" data-period="30d">30 giorni</button>
+            <button type="button" class="history-option" data-period="12m">12 mesi</button>
+          </div>
+          <div id="netatmoHistoryMessage" class="muted"></div>
+          <canvas id="netatmoHistoryChart"></canvas>
+        </div>
+      </section>
+      <div class="temperature-status">
+        <div class="muted">Stato comunicazione Netatmo</div>
+        <div id="viewerNetatmoCommunication" class="pill gray">Caricamento...</div>
+      </div>
+      <div class="temperature-footer">
+        <div class="muted">Ultimo aggiornamento</div>
+        <div id="viewerNetatmoLastUpdate">--:--:--</div>
+      </div>
+    </section>
+
+    <section id="pageAirConditioning" class="portal-page hidden">
+      <section class="card air-page-header">
+        <div class="row between gap"><div><h2>Climatizzazione {{ house.display_name }}</h2><p class="muted">Stato unità Intesis · sola lettura</p></div><div id="viewerAirStatus" class="pill gray">Caricamento...</div></div>
+      </section>
+      <div id="viewerAirDevices" class="air-device-grid"></div>
+    </section>
+    </section>
+
+    <section id="pageReport" class="portal-page hidden">
     <section class="card">
       <h2>📊 Report</h2>
       <div id="viewerStatisticsCards" class="viewer-statistics"></div>
+    </section>
     </section>
 
     <section class="card small">
@@ -192,6 +311,8 @@
       </div>
     </section>
   </main>
+  <script src="/static/house_ui.js"></script>
+  <script src="/static/netatmo_history.js"></script>
   <script src="/static/viewer.js"></script>
 </body>
 </html>

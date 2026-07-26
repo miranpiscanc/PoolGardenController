@@ -1,5 +1,7 @@
+import json
 import threading
 import time
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -11,6 +13,7 @@ class WeatherService:
         config = config or {}
         self.config = config
         self.poll_seconds = int(config.get("poll_seconds", 30))
+        self.forecast_poll_seconds = max(900, int(config.get("forecast_poll_seconds", 1800)))
         self.timeout_seconds = float(config.get("timeout_seconds", 5))
         self.retry_count = max(1, int(config.get("retry_count", 2)))
         self.event_callback = event_callback
@@ -18,6 +21,7 @@ class WeatherService:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread = None
+        self._resolved_locations = {}
         self._state = self._initial_state(config)
 
     def start(self):
@@ -35,7 +39,8 @@ class WeatherService:
             locations = {
                 key: {
                     **location,
-                    "metrics": {metric_key: dict(metric) for metric_key, metric in location.get("metrics", {}).items()}
+                    "metrics": {metric_key: dict(metric) for metric_key, metric in location.get("metrics", {}).items()},
+                    "forecast": dict(location.get("forecast", {}))
                 }
                 for key, location in self._state.get("locations", {}).items()
             }
@@ -100,6 +105,21 @@ class WeatherService:
                 }
             locations[location_key] = {
                 "label": location.get("label", location_key),
+                "latitude": location.get("latitude"),
+                "longitude": location.get("longitude"),
+                "forecast": {
+                    "online": False,
+                    "date": None,
+                    "weather_code": None,
+                    "temperature_min": None,
+                    "temperature_max": None,
+                    "precipitation_probability": None,
+                    "precipitation_sum": None,
+                    "wind_speed_max": None,
+                    "last_valid_update": None,
+                    "last_attempt": None,
+                    "error": ""
+                },
                 "metrics": metrics
             }
         return {"sources": sources, "locations": locations}
@@ -112,10 +132,112 @@ class WeatherService:
             self._stop.wait(max(0, self.poll_seconds - elapsed))
 
     def poll_once(self):
-        self._log("Polling weather sensors...")
+        self._log("Polling weather sensors...", level="DEBUG")
         for source_key, source in (self.config.get("sources") or {}).items():
             if source.get("type") == "hwg_ste":
                 self._poll_hwg_ste_source(source_key, source)
+        self._poll_daily_forecasts_if_due()
+
+    def _poll_daily_forecasts_if_due(self):
+        current = time.monotonic()
+        last_poll = getattr(self, "_last_forecast_poll_monotonic", None)
+        if last_poll is not None and current - last_poll < self.forecast_poll_seconds:
+            return
+        self._last_forecast_poll_monotonic = current
+        for location_key, location in (self.config.get("locations") or {}).items():
+            try:
+                latitude, longitude = self._forecast_coordinates(location_key, location)
+                self._poll_daily_forecast(location_key, latitude, longitude)
+            except Exception as exc:
+                attempted_at = datetime.now().isoformat(timespec="seconds")
+                with self._lock:
+                    forecast = self._state["locations"][location_key]["forecast"]
+                    forecast.update({"online": False, "last_attempt": attempted_at, "error": str(exc)})
+                self._log(f"Daily forecast location resolution failed: {location_key} ({exc})")
+
+    def _forecast_coordinates(self, location_key, location):
+        default_forecast_locations = {
+            "opicina": "Trieste",
+            "cesclans": "Cavazzo Carnico"
+        }
+        search_name = str(
+            location.get("forecast_location")
+            or default_forecast_locations.get(str(location_key).lower())
+            or ""
+        ).strip()
+        if not search_name:
+            latitude = location.get("latitude")
+            longitude = location.get("longitude")
+            if latitude is None or longitude is None:
+                raise ValueError("Forecast location not configured")
+            return float(latitude), float(longitude)
+        if location_key in self._resolved_locations:
+            return self._resolved_locations[location_key]
+        params = urllib.parse.urlencode({
+            "name": search_name,
+            "count": 1,
+            "language": "it",
+            "countryCode": "IT",
+            "format": "json"
+        })
+        url = f"https://geocoding-api.open-meteo.com/v1/search?{params}"
+        with urllib.request.urlopen(url, timeout=self.timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        results = payload.get("results") or []
+        if not results:
+            raise ValueError(f"Location not found: {search_name}")
+        result = results[0]
+        coordinates = (float(result["latitude"]), float(result["longitude"]))
+        self._resolved_locations[location_key] = coordinates
+        self._log(
+            f"Forecast location resolved: {location_key} -> {result.get('name', search_name)} "
+            f"({coordinates[0]}, {coordinates[1]})",
+            level="DEBUG"
+        )
+        return coordinates
+
+    def _poll_daily_forecast(self, location_key, latitude, longitude):
+        attempted_at = datetime.now().isoformat(timespec="seconds")
+        params = urllib.parse.urlencode({
+            "latitude": latitude,
+            "longitude": longitude,
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max",
+            "timezone": "Europe/Rome",
+            "forecast_days": 1
+        })
+        url = f"https://api.open-meteo.com/v1/forecast?{params}"
+        try:
+            with urllib.request.urlopen(url, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            daily = payload.get("daily") or {}
+
+            def first(key):
+                values = daily.get(key) or []
+                return values[0] if values else None
+
+            forecast = {
+                "online": True,
+                "date": first("time"),
+                "weather_code": first("weather_code"),
+                "temperature_min": first("temperature_2m_min"),
+                "temperature_max": first("temperature_2m_max"),
+                "precipitation_probability": first("precipitation_probability_max"),
+                "precipitation_sum": first("precipitation_sum"),
+                "wind_speed_max": first("wind_speed_10m_max"),
+                "last_valid_update": attempted_at,
+                "last_attempt": attempted_at,
+                "error": ""
+            }
+            if forecast["date"] is None:
+                raise ValueError("Daily forecast missing from response")
+            with self._lock:
+                self._state["locations"][location_key]["forecast"] = forecast
+            self._log(f"Daily forecast updated: {location_key}", level="DEBUG")
+        except Exception as exc:
+            with self._lock:
+                forecast = self._state["locations"][location_key]["forecast"]
+                forecast.update({"online": False, "last_attempt": attempted_at, "error": str(exc)})
+            self._log(f"Daily forecast poll failed: {location_key} ({exc})", level="DEBUG")
 
     def _poll_hwg_ste_source(self, source_key, source):
         attempted_at = datetime.now().isoformat(timespec="seconds")
@@ -135,10 +257,12 @@ class WeatherService:
             self._log(
                 "Parsed values:\n"
                 f"temperature={parsed_values.get('temperature')}\n"
-                f"humidity={parsed_values.get('humidity')}"
+                f"humidity={parsed_values.get('humidity')}",
+                level="DEBUG"
             )
-            self._log("Dashboard update completed.")
+            self._log("Dashboard update completed.", level="DEBUG")
             if initialized and was_online is False:
+                self._log(f"Weather source restored: {source_key}")
                 self._record_event(source_key, "ONLINE", "Weather sensor communication restored")
         except Exception as exc:
             with self._lock:
@@ -152,7 +276,10 @@ class WeatherService:
                 })
                 self._mark_source_metrics_offline(source_key, attempted_at, str(exc))
             if initialized and was_online is True:
+                self._log(f"Weather source offline: {source_key} ({exc})")
                 self._record_event(source_key, "OFFLINE", str(exc))
+            else:
+                self._log(f"Weather source poll failed: {source_key} ({exc})", level="DEBUG")
 
     def _apply_source_values(self, source_key, values, timestamp):
         parsed_values = {}
@@ -196,11 +323,11 @@ class WeatherService:
         last_error = None
         for attempt in range(self.retry_count):
             try:
-                self._log(f"Downloading:\n{url}")
+                self._log(f"Downloading:\n{url}", level="DEBUG")
                 with urllib.request.urlopen(url, timeout=self.timeout_seconds) as response:
                     data = response.read()
                 values = self._parse_hwg_values(data)
-                self._log(f"Raw values:\n{values}")
+                self._log(f"Raw values:\n{values}", level="DEBUG")
                 return values
             except Exception as exc:
                 last_error = exc
@@ -243,15 +370,19 @@ class WeatherService:
             reason
         )
 
-    def _log(self, message):
+    def _log(self, message, level="INFO"):
         if self.log_callback:
-            self.log_callback(message)
+            try:
+                self.log_callback(message, level=level)
+            except TypeError:
+                self.log_callback(message)
         else:
             print(message)
 
 
 DEFAULT_WEATHER_CONFIG: Dict[str, object] = {
     "poll_seconds": 30,
+    "forecast_poll_seconds": 1800,
     "timeout_seconds": 5,
     "retry_count": 2,
     "sources": {
@@ -271,6 +402,7 @@ DEFAULT_WEATHER_CONFIG: Dict[str, object] = {
     "locations": {
         "opicina": {
             "label": "Opicina",
+            "forecast_location": "Trieste",
             "metrics": {
                 "temperature": {
                     "label": "Temperature",
@@ -288,6 +420,7 @@ DEFAULT_WEATHER_CONFIG: Dict[str, object] = {
         },
         "cesclans": {
             "label": "Cesclans",
+            "forecast_location": "Cavazzo Carnico",
             "metrics": {
                 "temperature": {
                     "label": "Temperature",

@@ -1,0 +1,30 @@
+{
+  "houses": [
+    {
+      "id": "cesclans",
+      "display_name": "Cesclans",
+      "enabled": true,
+      "route": "/cesclans",
+      "description": "Current configured MeM house.",
+      "status_label": "Active / Configured",
+      "modules": [
+        "GoodWe",
+        "Netatmo",
+        "Intesis",
+        "Pool",
+        "Winter Energy",
+        "Weather",
+        "History"
+      ]
+    },
+    {
+      "id": "opicina",
+      "display_name": "Opicina",
+      "enabled": true,
+      "route": "/opicina",
+      "description": "House prepared in the MeM architecture; devices and modules are not configured yet.",
+      "status_label": "Configuration pending",
+      "modules": []
+    }
+  ]
+}

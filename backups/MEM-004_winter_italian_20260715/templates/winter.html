@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeM · Winter Energy</title>
+  <link rel="icon" href="/static/favicon.ico">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap winter-wrap" data-viewer="{{ 'true' if viewer else 'false' }}">
+    <header class="hero winter-hero">
+      <div><h1>🏔️ Winter Energy</h1><p class="hero-subtitle">Cesclans · Thermal learning dashboard</p></div>
+      <div class="header-actions"><span id="winterCollector" class="pill gray">Caricamento...</span><a class="button-link" href="{{ back_href }}">← Dashboard</a></div>
+    </header>
+
+    <div class="winter-simulation-banner">SIMULATION ONLY -- NO HVAC COMMANDS ARE SENT.</div>
+
+    <section class="winter-section">
+      <h2>System status</h2>
+      <div class="winter-grid winter-grid-status">
+        <article class="card"><span>Mode</span><strong id="winterMode">--</strong></article>
+        <article class="card winter-value-card"><span>Energy context</span><strong id="winterEnergyContext">Unknown</strong><small>Used to classify Winter Energy samples</small></article>
+        <article class="card"><span>Netatmo</span><strong id="winterNetatmo">--</strong></article>
+        <article class="card"><span>GoodWe</span><strong id="winterGoodwe">--</strong></article>
+        <article class="card"><span>Intesis</span><strong id="winterIntesis">--</strong></article>
+        <article class="card"><span>Last sample</span><strong id="winterLastSample">--</strong></article>
+      </div>
+    </section>
+
+    <section class="winter-section">
+      <h2>Temperature</h2>
+      <div class="winter-grid">
+        <article class="card winter-value-card"><span>Outdoor</span><strong id="winterOutdoor">--</strong><small id="winterOutdoorTrend">--</small></article>
+        <article class="card winter-value-card"><span>Master bedroom</span><strong id="winterMaster">--</strong><small id="winterMasterTrend">--</small></article>
+        <article class="card winter-value-card"><span>Kids room</span><strong id="winterKids">--</strong><small id="winterKidsTrend">--</small></article>
+        <article class="card winter-value-card"><span>Indoor average</span><strong id="winterAverage">--</strong><small id="winterColdest">Coldest: --</small></article>
+        <article class="card winter-value-card"><span>Indoor / outdoor Δ</span><strong id="winterDelta">--</strong></article>
+      </div>
+    </section>
+
+    <section class="winter-section">
+      <h2>Energy</h2>
+      <div class="winter-grid">
+        <article class="card winter-value-card"><span>PV production</span><strong id="winterPv">--</strong></article>
+        <article class="card winter-value-card"><span>House consumption</span><strong id="winterLoad">--</strong></article>
+        <article class="card winter-value-card"><span>Battery SOC</span><strong id="winterSoc">--</strong></article>
+        <article class="card winter-value-card"><span>Battery charge / discharge</span><strong id="winterBattery">--</strong></article>
+        <article class="card winter-value-card"><span>Grid import / export</span><strong id="winterGrid">--</strong></article>
+      </div>
+    </section>
+
+    <section class="winter-section">
+      <h2>HVAC status <small class="muted">read-only</small></h2>
+      <div id="winterHvac" class="winter-grid"><article class="card muted">No HVAC data available.</article></div>
+    </section>
+
+    <section class="winter-two-column">
+      <article class="card">
+        <h2>Thermal analysis</h2>
+        <dl class="winter-details">
+          <div><dt>Indoor trend</dt><dd id="winterIndoorTrend">--</dd></div>
+          <div><dt>Estimated thermal inertia</dt><dd id="winterInertia">--</dd></div>
+          <div><dt>Learning samples</dt><dd id="winterSamples">--</dd></div>
+          <div><dt>Model quality</dt><dd id="winterQuality">--</dd></div>
+        </dl>
+      </article>
+      <article class="card winter-decision">
+        <h2>Simulated decision</h2>
+        <strong id="winterDecision">--</strong>
+        <p id="winterDecisionReason" class="muted">Waiting for data.</p>
+        <small>HVAC command sent: <b>NO</b></small>
+      </article>
+    </section>
+
+    <section class="card winter-history">
+      <div class="row between"><h2>Historical charts</h2><select id="winterPeriod"><option value="24">24 hours</option><option value="168">7 days</option><option value="720">30 days</option></select></div>
+      <h3>Temperatures</h3><canvas id="winterTemperatureChart" height="230"></canvas>
+      <h3>Energy</h3><canvas id="winterEnergyChart" height="230"></canvas>
+      <p id="winterChartEmpty" class="muted"></p>
+    </section>
+  </main>
+  <script src="/static/winter.js"></script>
+</body>
+</html>

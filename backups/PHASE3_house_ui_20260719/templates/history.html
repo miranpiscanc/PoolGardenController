@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="{{ language|default('en') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="history.pageTitle"></title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/static/apple-touch-icon-precomposed.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main id="historyPage" class="wrap">
+    <header class="hero">
+      <div>
+        <h1 data-i18n="history.title"></h1>
+        <p id="appMeta" data-i18n="common.loading"></p>
+        <small class="hero-refresh"><span data-i18n="energy.dashboardRefresh"></span> · <span id="refreshCountdown"></span></small>
+      </div>
+      <div class="header-actions">
+        <div id="languageSelector" class="language-selector"></div>
+        <a class="button-link" href="{{ back_href|default('/') }}" data-i18n="{{ back_i18n|default('nav.dashboard') }}"></a>
+      </div>
+    </header>
+
+    <section class="card history-controls-card">
+      <div class="history-button-group" id="historyPeriodButtons">
+        <button type="button" class="history-option active" data-period="24h" data-i18n="history.periods.24h"></button>
+        <button type="button" class="history-option" data-period="7d" data-i18n="history.periods.7d"></button>
+        <button type="button" class="history-option" data-period="30d" data-i18n="history.periods.30d"></button>
+        <button type="button" class="history-option" data-period="12m" data-i18n="history.periods.12m"></button>
+      </div>
+      <div class="history-button-group" id="historyLocationButtons">
+        <button type="button" class="history-option active" data-location="opicina">Opicina</button>
+        <button type="button" class="history-option" data-location="cesclans">Cesclans</button>
+        <button type="button" class="history-option" data-location="compare" data-i18n="history.locations.compare"></button>
+      </div>
+    </section>
+
+    <section id="historyStats" class="history-stats"></section>
+
+    <section class="card history-graph-card">
+      <div class="row between">
+        <div>
+          <h2 data-i18n="history.graphTitle"></h2>
+          <div id="historyGraphHint" class="muted" data-i18n="history.graphHint"></div>
+        </div>
+        <button id="historyGraphToggle" type="button" data-i18n="history.showGraph"></button>
+      </div>
+      <div id="historyGraphPanel" class="history-graph-panel hidden">
+        <canvas id="historyChart"></canvas>
+        <div id="historyTooltip" class="history-tooltip hidden"></div>
+      </div>
+    </section>
+
+    <footer class="footer"><span data-i18n="common.lastSuccessfulRefresh"></span> <span id="lastRefresh">-</span></footer>
+  </main>
+  <script src="/static/history.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
